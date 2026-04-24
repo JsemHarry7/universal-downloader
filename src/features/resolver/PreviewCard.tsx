@@ -34,25 +34,71 @@ interface PreviewCardProps {
   onClear: () => void;
 }
 
+type ProgressHint = { percent?: number; stage?: string };
+
 type Status =
   | { kind: "idle" }
-  | { kind: "downloading"; current: number; total: number; trackTitle: string }
+  | {
+      kind: "downloading";
+      current: number;
+      total: number;
+      trackTitle: string;
+      trackPercent: number;
+      stage?: string;
+    }
   | { kind: "done"; downloaded: number };
 
 async function downloadOne(
   body: { url: string; title?: string; artist?: string; album?: string },
+  onProgress?: (ev: ProgressHint) => void,
 ): Promise<string[]> {
   const res = await fetch("/api/download", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? `HTTP ${res.status}`);
+  if (!res.ok || !res.body) {
+    throw new Error(`HTTP ${res.status}`);
   }
-  const data = (await res.json()) as { outputFiles: string[] };
-  return data.outputFiles ?? [];
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const outputFiles: string[] = [];
+  let error: Error | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const event = JSON.parse(trimmed) as
+          | { type: "progress"; percent: number }
+          | { type: "stage"; name: string }
+          | { type: "done"; outputFiles: string[] }
+          | { type: "error"; message: string };
+        if (event.type === "progress") {
+          onProgress?.({ percent: event.percent });
+        } else if (event.type === "stage") {
+          onProgress?.({ stage: event.name });
+        } else if (event.type === "done") {
+          outputFiles.push(...event.outputFiles);
+        } else if (event.type === "error") {
+          error = new Error(event.message);
+        }
+      } catch {
+        // non-JSON line, ignore
+      }
+    }
+  }
+
+  if (error) throw error;
+  return outputFiles;
 }
 
 export function PreviewCard({ item, onClear }: PreviewCardProps) {
@@ -95,16 +141,30 @@ export function PreviewCard({ item, onClear }: PreviewCardProps) {
             current: i + 1,
             total,
             trackTitle: t.title,
+            trackPercent: 0,
           });
           toast.loading(`Track ${i + 1}/${total}: ${t.title}`, { id: pending });
           const query = `ytsearch1:${t.artist} ${t.title}`.trim();
           try {
-            const files = await downloadOne({
-              url: query,
-              title: t.title,
-              artist: t.artist,
-              album: item.kind === "album" ? item.title : undefined,
-            });
+            const files = await downloadOne(
+              {
+                url: query,
+                title: t.title,
+                artist: t.artist,
+                album: item.kind === "album" ? item.title : undefined,
+              },
+              ({ percent, stage }) => {
+                setStatus((prev) =>
+                  prev.kind === "downloading"
+                    ? {
+                        ...prev,
+                        trackPercent: percent ?? prev.trackPercent,
+                        stage: stage ?? prev.stage,
+                      }
+                    : prev,
+                );
+              },
+            );
             outputs.push(...files);
             await syncOne(t);
           } catch (err) {
@@ -117,8 +177,22 @@ export function PreviewCard({ item, onClear }: PreviewCardProps) {
           current: 1,
           total: 1,
           trackTitle: item.title,
+          trackPercent: 0,
         });
-        const files = await downloadOne({ url: item.source_url });
+        const files = await downloadOne(
+          { url: item.source_url },
+          ({ percent, stage }) => {
+            setStatus((prev) =>
+              prev.kind === "downloading"
+                ? {
+                    ...prev,
+                    trackPercent: percent ?? prev.trackPercent,
+                    stage: stage ?? prev.stage,
+                  }
+                : prev,
+            );
+          },
+        );
         outputs.push(...files);
         if (item.kind === "track" && item.tracks[0]) {
           await syncOne(item.tracks[0]);
@@ -210,20 +284,25 @@ export function PreviewCard({ item, onClear }: PreviewCardProps) {
 
           {isDownloading && (
             <div className="mt-1 space-y-1 text-xs text-muted-foreground">
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-2">
                 <span className="truncate">{status.trackTitle}</span>
-                <span className="ml-2 shrink-0 tabular-nums">
-                  {status.current}/{status.total}
+                <span className="shrink-0 tabular-nums">
+                  {status.total > 1 ? `${status.current}/${status.total} · ` : ""}
+                  {Math.round(status.trackPercent)}%
+                  {status.stage ? ` · ${status.stage}` : ""}
                 </span>
               </div>
-              <div className="h-1 overflow-hidden rounded-full bg-muted">
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <motion.div
                   className="h-full bg-primary"
-                  initial={{ width: 0 }}
                   animate={{
-                    width: `${(status.current / status.total) * 100}%`,
+                    width: `${
+                      ((status.current - 1 + status.trackPercent / 100) /
+                        status.total) *
+                      100
+                    }%`,
                   }}
-                  transition={{ duration: 0.3 }}
+                  transition={{ duration: 0.2 }}
                 />
               </div>
             </div>

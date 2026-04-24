@@ -1,9 +1,7 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
+import readline from "node:readline";
 import NodeID3 from "node-id3";
 import { ensureDir } from "./paths";
-
-const execFileAsync = promisify(execFile);
 
 export interface DownloadOptions {
   url: string;
@@ -14,7 +12,17 @@ export interface DownloadOptions {
   ffmpegDir?: string;
 }
 
-export interface DownloadResult {
+export type DownloadEvent =
+  | { type: "stage"; name: string }
+  | {
+      type: "progress";
+      percent: number;
+      total?: string;
+      speed?: string;
+      eta?: string;
+    };
+
+export interface StreamingDownloadResult {
   outputFiles: string[];
 }
 
@@ -26,14 +34,18 @@ function safeFilenameComponent(s: string): string {
     .slice(0, 120);
 }
 
-export async function downloadUrl(
+const PROGRESS_RE =
+  /\[download\]\s+(\d+(?:\.\d+)?)%\s+of\s+~?\s*([\d.]+\s*\w+)(?:\s+at\s+(\S+))?(?:\s+ETA\s+(\S+))?/;
+const STAGE_RE = /^\[([A-Za-z][\w:]*)\]/;
+
+export async function downloadUrlStream(
   ytdlpPath: string,
   opts: DownloadOptions,
-): Promise<DownloadResult> {
+  onEvent: (ev: DownloadEvent) => void,
+): Promise<StreamingDownloadResult> {
   ensureDir(opts.destDir);
 
   const destPrefix = opts.destDir.replace(/\\/g, "/");
-
   const outputTemplate =
     opts.artist && opts.title
       ? `${destPrefix}/${safeFilenameComponent(opts.artist)} - ${safeFilenameComponent(opts.title)}.%(ext)s`
@@ -41,6 +53,8 @@ export async function downloadUrl(
 
   const args = [
     "--no-warnings",
+    "--newline",
+    "--progress",
     "--extract-audio",
     "--audio-format",
     "mp3",
@@ -54,23 +68,76 @@ export async function downloadUrl(
     "-o",
     outputTemplate,
     "--print",
-    "after_move:filepath",
+    "after_move:UDL_DONE:%(filepath)s",
   ];
 
   if (opts.ffmpegDir) {
     args.push("--ffmpeg-location", opts.ffmpegDir);
   }
-
   args.push(opts.url);
 
-  const { stdout } = await execFileAsync(ytdlpPath, args, {
-    maxBuffer: 1024 * 1024 * 500,
-  });
+  const outputFiles: string[] = [];
 
-  const outputFiles = stdout
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn(ytdlpPath, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    });
+
+    const stdoutReader = readline.createInterface({ input: proc.stdout });
+    const stderrReader = readline.createInterface({ input: proc.stderr });
+
+    let lastReportedPercent = -1;
+    let lastReportedStage = "";
+
+    const handleLine = (line: string) => {
+      if (line.startsWith("UDL_DONE:")) {
+        outputFiles.push(line.slice("UDL_DONE:".length).trim());
+        return;
+      }
+
+      const progressMatch = line.match(PROGRESS_RE);
+      if (progressMatch) {
+        const percent = parseFloat(progressMatch[1]);
+        if (
+          percent === 100 ||
+          percent - lastReportedPercent >= 1 ||
+          percent < lastReportedPercent
+        ) {
+          lastReportedPercent = percent;
+          onEvent({
+            type: "progress",
+            percent,
+            total: progressMatch[2],
+            speed: progressMatch[3],
+            eta: progressMatch[4],
+          });
+        }
+        return;
+      }
+
+      const stageMatch = line.match(STAGE_RE);
+      if (stageMatch) {
+        const name = stageMatch[1];
+        if (name !== "download" && name !== lastReportedStage) {
+          lastReportedStage = name;
+          onEvent({ type: "stage", name });
+        }
+      }
+    };
+
+    stdoutReader.on("line", handleLine);
+    stderrReader.on("line", handleLine);
+
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`yt-dlp exited with code ${code}`));
+        return;
+      }
+      resolve();
+    });
+  });
 
   if (opts.title || opts.artist || opts.album) {
     for (const file of outputFiles) {

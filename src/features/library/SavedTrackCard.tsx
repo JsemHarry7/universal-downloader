@@ -11,20 +11,27 @@ interface SavedTrackCardProps {
   onDownloaded: () => void;
 }
 
+type Status =
+  | { kind: "idle" }
+  | { kind: "downloading"; percent: number; stage?: string }
+  | { kind: "done" }
+  | { kind: "error" };
+
 export function SavedTrackCard({
   track,
   index,
   onDownloaded,
 }: SavedTrackCardProps) {
-  const [status, setStatus] = useState<"idle" | "downloading" | "done" | "error">("idle");
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
 
   async function handleDownload() {
-    setStatus("downloading");
+    setStatus({ kind: "downloading", percent: 0 });
     try {
       const url =
         track.source_url && track.source !== "spotify"
           ? track.source_url
           : `ytsearch1:${track.artist ?? ""} ${track.title}`.trim();
+
       const res = await fetch("/api/download", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -35,15 +42,52 @@ export function SavedTrackCard({
           album: track.album ?? undefined,
         }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error ?? `HTTP ${res.status}`);
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let error: Error | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const event = JSON.parse(trimmed) as
+              | { type: "progress"; percent: number }
+              | { type: "stage"; name: string }
+              | { type: "done"; outputFiles: string[] }
+              | { type: "error"; message: string };
+            if (event.type === "progress") {
+              setStatus({ kind: "downloading", percent: event.percent });
+            } else if (event.type === "stage") {
+              setStatus((prev) =>
+                prev.kind === "downloading"
+                  ? { ...prev, stage: event.name }
+                  : prev,
+              );
+            } else if (event.type === "error") {
+              error = new Error(event.message);
+            }
+          } catch {
+            // ignore non-JSON
+          }
+        }
       }
-      setStatus("done");
+
+      if (error) throw error;
+
+      setStatus({ kind: "done" });
       toast.success(`Downloaded "${track.title}"`);
       onDownloaded();
     } catch (err) {
-      setStatus("error");
+      setStatus({ kind: "error" });
       toast.error("Download failed", {
         description: err instanceof Error ? err.message : String(err),
       });
@@ -87,21 +131,42 @@ export function SavedTrackCard({
             {track.artist ?? "Unknown artist"}
           </p>
         </div>
+
+        {status.kind === "downloading" && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span className="truncate">
+                {status.stage ?? "downloading"}
+              </span>
+              <span className="shrink-0 tabular-nums">
+                {Math.round(status.percent)}%
+              </span>
+            </div>
+            <div className="h-1 overflow-hidden rounded-full bg-muted">
+              <motion.div
+                className="h-full bg-primary"
+                animate={{ width: `${status.percent}%` }}
+                transition={{ duration: 0.2 }}
+              />
+            </div>
+          </div>
+        )}
+
         <Button
           size="sm"
           variant="outline"
           className="w-full gap-2"
           onClick={handleDownload}
-          disabled={status === "downloading" || status === "done"}
+          disabled={status.kind === "downloading" || status.kind === "done"}
         >
-          {status === "downloading" ? (
+          {status.kind === "downloading" ? (
             <Loader2 className="h-3 w-3 animate-spin" />
           ) : (
             <Download className="h-3 w-3" />
           )}
-          {status === "downloading"
+          {status.kind === "downloading"
             ? "Downloading…"
-            : status === "done"
+            : status.kind === "done"
               ? "Downloaded"
               : "Download here"}
         </Button>

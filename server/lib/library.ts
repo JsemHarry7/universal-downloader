@@ -46,7 +46,7 @@ export async function scanDir(
         if (AUDIO_EXTS.has(ext)) {
           seenPaths.add(full);
           try {
-            await indexFile(full, db);
+            await indexTrack(full, db);
             indexed++;
           } catch (err) {
             console.warn(
@@ -79,7 +79,10 @@ export async function scanDir(
   return { indexed, removed, errors };
 }
 
-async function indexFile(filepath: string, db: Database) {
+export async function indexTrack(
+  filepath: string,
+  db: Database,
+): Promise<string> {
   const stat = await fsp.stat(filepath);
   const mtime = Math.floor(stat.mtimeMs);
 
@@ -87,7 +90,7 @@ async function indexFile(filepath: string, db: Database) {
     .prepare("SELECT id, file_mtime FROM library WHERE path = ?")
     .get(filepath) as { id: string; file_mtime: number } | undefined;
 
-  if (existing && existing.file_mtime === mtime) return;
+  if (existing && existing.file_mtime === mtime) return existing.id;
 
   const id = existing?.id ?? crypto.randomUUID();
   const ext = path.extname(filepath).slice(1).toLowerCase();
@@ -158,6 +161,8 @@ async function indexFile(filepath: string, db: Database) {
     ensureDir(artDir);
     await fsp.writeFile(path.join(artDir, `${id}.jpg`), artworkBuffer);
   }
+
+  return id;
 }
 
 async function removeArtwork(id: string) {

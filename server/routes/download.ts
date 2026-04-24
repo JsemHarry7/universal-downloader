@@ -56,7 +56,11 @@ export function downloadRoutes(
             },
             (ev) => send(ev),
           );
-          send({ type: "done", outputFiles: result.outputFiles });
+          send({
+            type: "done",
+            outputFiles: result.outputFiles,
+            libraryIds: result.libraryIds,
+          });
         } catch (err) {
           send({
             type: "error",

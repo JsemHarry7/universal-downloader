@@ -79,6 +79,24 @@ export function playlistRoutes() {
     return c.json({ ok });
   });
 
+  routes.post("/playlists/:id/tracks/batch", async (c) => {
+    const body = await c.req.json<{ trackIds?: string[] }>();
+    if (!Array.isArray(body.trackIds) || body.trackIds.length === 0) {
+      return c.json({ error: "trackIds array required" }, 400);
+    }
+    const db = getDb();
+    let added = 0;
+    let skipped = 0;
+    const txn = db.transaction((ids: string[]) => {
+      for (const id of ids) {
+        if (addTrackToPlaylist(db, c.req.param("id"), id)) added++;
+        else skipped++;
+      }
+    });
+    txn(body.trackIds);
+    return c.json({ added, skipped });
+  });
+
   routes.delete("/playlists/:id/tracks/:trackId", (c) => {
     const ok = removeTrackFromPlaylist(
       getDb(),

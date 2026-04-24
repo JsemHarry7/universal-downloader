@@ -8,6 +8,7 @@ import {
   Play,
   Shuffle,
   X as XIcon,
+  ListPlus,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -38,6 +39,7 @@ import { PlaylistBar } from "./PlaylistBar";
 import { NewPlaylistDialog } from "./NewPlaylistDialog";
 import { TagEditor, tagClass } from "./TagEditor";
 import { StatsPanel } from "./StatsPanel";
+import { AddSongsDialog } from "./AddSongsDialog";
 import { useAuth } from "@/features/auth/useAuth";
 import { fetchSavedTracks, matchKey } from "@/lib/sync";
 import { usePlayer } from "@/features/player/PlayerProvider";
@@ -61,6 +63,7 @@ export function LibraryView() {
     useState<Playlist | null>(null);
   const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false);
   const [playlistToDelete, setPlaylistToDelete] = useState<Playlist | null>(null);
+  const [addSongsFor, setAddSongsFor] = useState<Playlist | null>(null);
   const { user, isConfigured: firebaseConfigured } = useAuth();
   const { currentTrack: nowPlaying, dispatch: playerDispatch } = usePlayer();
 
@@ -417,6 +420,17 @@ export function LibraryView() {
             </Button>
           </>
         )}
+        {activePlaylist && (
+          <Button
+            variant="outline"
+            onClick={() => setAddSongsFor(activePlaylist)}
+            className="gap-2"
+            title="Add songs to this playlist"
+          >
+            <ListPlus className="h-4 w-4" />
+            Add songs
+          </Button>
+        )}
         <Button
           variant="outline"
           onClick={rescan}
@@ -451,12 +465,21 @@ export function LibraryView() {
             </p>
             <p className="text-sm text-muted-foreground">
               {activePlaylist
-                ? 'Hover a track in "All" and click the list icon to add it here.'
+                ? "Pick songs from your library to add."
                 : firebaseConfigured && !user
                   ? "Download a track, click Rescan, or sign in to pull from your other devices."
                   : "Download a track or click Rescan to detect existing files."}
             </p>
           </div>
+          {activePlaylist && (
+            <Button
+              onClick={() => setAddSongsFor(activePlaylist)}
+              className="gap-2"
+            >
+              <ListPlus className="h-4 w-4" />
+              Add songs
+            </Button>
+          )}
         </motion.div>
       ) : (
         <div className="space-y-8">
@@ -532,7 +555,20 @@ export function LibraryView() {
         }}
         onSaved={async (created) => {
           await refreshPlaylists();
-          if (created) setActivePlaylistId(created.id);
+          if (created) {
+            setActivePlaylistId(created.id);
+            setAddSongsFor(created);
+          }
+        }}
+      />
+
+      <AddSongsDialog
+        open={addSongsFor !== null}
+        playlist={addSongsFor}
+        onClose={() => setAddSongsFor(null)}
+        onAdded={async () => {
+          await refreshPlaylists();
+          await refreshPlaylistTracks();
         }}
       />
 

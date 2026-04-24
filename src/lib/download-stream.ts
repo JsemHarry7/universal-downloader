@@ -5,6 +5,7 @@ export interface DownloadStreamEvent {
 
 export interface DownloadStreamResult {
   outputFiles: string[];
+  libraryIds: string[];
 }
 
 export interface DownloadStreamBody {
@@ -31,6 +32,7 @@ export async function streamDownload(
   const decoder = new TextDecoder();
   let buffer = "";
   const outputFiles: string[] = [];
+  const libraryIds: string[] = [];
   let error: Error | null = null;
 
   while (true) {
@@ -46,7 +48,7 @@ export async function streamDownload(
         const event = JSON.parse(trimmed) as
           | { type: "progress"; percent: number }
           | { type: "stage"; name: string }
-          | { type: "done"; outputFiles: string[] }
+          | { type: "done"; outputFiles: string[]; libraryIds?: string[] }
           | { type: "error"; message: string };
         if (event.type === "progress") {
           onProgress?.({ percent: event.percent });
@@ -54,6 +56,7 @@ export async function streamDownload(
           onProgress?.({ stage: event.name });
         } else if (event.type === "done") {
           outputFiles.push(...event.outputFiles);
+          libraryIds.push(...(event.libraryIds ?? []));
         } else if (event.type === "error") {
           error = new Error(event.message);
         }
@@ -64,5 +67,5 @@ export async function streamDownload(
   }
 
   if (error) throw error;
-  return { outputFiles };
+  return { outputFiles, libraryIds };
 }

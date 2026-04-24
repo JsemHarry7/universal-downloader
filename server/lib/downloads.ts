@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import readline from "node:readline";
 import NodeID3 from "node-id3";
 import { ensureDir } from "./paths";
+import { getDb } from "./db";
+import { indexTrack } from "./library";
 
 export interface DownloadOptions {
   url: string;
@@ -24,6 +26,7 @@ export type DownloadEvent =
 
 export interface StreamingDownloadResult {
   outputFiles: string[];
+  libraryIds: string[];
 }
 
 function safeFilenameComponent(s: string): string {
@@ -154,5 +157,16 @@ export async function downloadUrlStream(
     }
   }
 
-  return { outputFiles };
+  const libraryIds: string[] = [];
+  for (const file of outputFiles) {
+    try {
+      const id = await indexTrack(file, getDb());
+      libraryIds.push(id);
+    } catch (err) {
+      console.warn(`indexing failed for ${file}:`, (err as Error).message);
+      libraryIds.push("");
+    }
+  }
+
+  return { outputFiles, libraryIds };
 }

@@ -13,6 +13,8 @@ import {
   User,
   Check,
   CopyCheck,
+  Download,
+  CloudDownload,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -53,7 +55,18 @@ import { StatsPanel } from "./StatsPanel";
 import { AddSongsDialog } from "./AddSongsDialog";
 import { DuplicatesDialog } from "./DuplicatesDialog";
 import { useAuth } from "@/features/auth/useAuth";
-import { fetchSavedTracks, matchKey } from "@/lib/sync";
+import {
+  fetchSavedTracks,
+  fetchPlaylistsCloud,
+  matchKey,
+  deletePlaylistCloud,
+  pushAllTagsToCloud,
+  pushAllTrackTagsToCloud,
+  pushPlaylistByIdToCloud,
+  type CloudPlaylist,
+} from "@/lib/sync";
+import { streamDownload } from "@/lib/download-stream";
+import { useCloudSync } from "@/features/cloud/useCloudSync";
 import { usePlayer } from "@/features/player/PlayerProvider";
 
 export function LibraryView() {
@@ -79,6 +92,8 @@ export function LibraryView() {
   const [dupesOpen, setDupesOpen] = useState(false);
   const [artistFilter, setArtistFilter] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<"added" | "title" | "artist" | "duration">("added");
+  const [cloudPlaylists, setCloudPlaylists] = useState<CloudPlaylist[]>([]);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
   const { user, isConfigured: firebaseConfigured } = useAuth();
   const { currentTrack: nowPlaying, dispatch: playerDispatch } = usePlayer();
 
@@ -189,11 +204,16 @@ export function LibraryView() {
   const refreshSaved = useCallback(async () => {
     if (!user) {
       setSaved([]);
+      setCloudPlaylists([]);
       return;
     }
     try {
-      const list = await fetchSavedTracks(user.uid);
-      setSaved(list);
+      const [savedList, playlistList] = await Promise.all([
+        fetchSavedTracks(user.uid),
+        fetchPlaylistsCloud(user.uid),
+      ]);
+      setSaved(savedList);
+      setCloudPlaylists(playlistList);
     } catch (err) {
       console.warn("fetch saved failed:", err);
     }
@@ -205,6 +225,17 @@ export function LibraryView() {
     refreshTags();
     refreshStats();
   }, [refresh, refreshPlaylists, refreshTags, refreshStats]);
+
+  useCloudSync({
+    user,
+    onReconciled: () => {
+      refresh();
+      refreshPlaylists();
+      refreshTags();
+      refreshStats();
+      refreshSaved();
+    },
+  });
 
   useEffect(() => {
     refreshSaved();
@@ -245,6 +276,23 @@ export function LibraryView() {
     () => saved.filter((s) => !localKeys.has(matchKey(s))),
     [saved, localKeys],
   );
+
+  const activeCloudPlaylist = useMemo(
+    () =>
+      activePlaylistId
+        ? (cloudPlaylists.find((p) => p.id === activePlaylistId) ?? null)
+        : null,
+    [cloudPlaylists, activePlaylistId],
+  );
+
+  const missingInActivePlaylist = useMemo(() => {
+    if (!activeCloudPlaylist) return [];
+    const localKeysInPlaylist = new Set(playlistTracks.map((t) => matchKey(t)));
+    return activeCloudPlaylist.track_keys
+      .filter((k) => !localKeysInPlaylist.has(k))
+      .map((k) => saved.find((s) => s.id === k))
+      .filter((t): t is SavedTrack => t !== undefined);
+  }, [activeCloudPlaylist, playlistTracks, saved]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -307,6 +355,16 @@ export function LibraryView() {
       await refreshPlaylists();
       await refreshTags();
       await refreshStats();
+      // Playlists this track was in need a track_keys push (local track gone)
+      if (user) {
+        const freshPlRes = await fetch("/api/playlists");
+        if (freshPlRes.ok) {
+          const { playlists: pls } = (await freshPlRes.json()) as {
+            playlists: Playlist[];
+          };
+          for (const p of pls) await syncPlaylistToCloud(p.id);
+        }
+      }
       toast.success(`Deleted "${target.title}"`);
     } catch (err) {
       toast.error("Delete failed", {
@@ -326,6 +384,7 @@ export function LibraryView() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       if (activePlaylistId === target.id) setActivePlaylistId(null);
       await refreshPlaylists();
+      if (user) await deletePlaylistCloud(user.uid, target.id);
       toast.success(`Deleted playlist "${target.name}"`);
     } catch (err) {
       toast.error("Playlist delete failed", {
@@ -334,15 +393,92 @@ export function LibraryView() {
     }
   }
 
+  async function syncPlaylistToCloud(playlistId: string) {
+    if (!user) return;
+    await pushPlaylistByIdToCloud(user.uid, playlistId);
+  }
+
   async function onPlaylistMutated() {
     await refreshPlaylists();
     await refreshPlaylistTracks();
+    if (user && activePlaylistId) {
+      await syncPlaylistToCloud(activePlaylistId);
+      await refreshSaved();
+    }
+  }
+
+  async function downloadBatch(tracks: SavedTrack[], label: string) {
+    if (tracks.length === 0) return;
+    setBulkDownloading(true);
+    const pending = toast.loading(`Downloading ${label}… 0/${tracks.length}`);
+    let ok = 0;
+    let fail = 0;
+    for (let i = 0; i < tracks.length; i++) {
+      const t = tracks[i];
+      toast.loading(
+        `Downloading ${label}… ${i + 1}/${tracks.length}: ${t.title}`,
+        { id: pending },
+      );
+      const url =
+        t.source_url && t.source !== "spotify"
+          ? t.source_url
+          : `ytsearch1:${t.artist ?? ""} ${t.title}`.trim();
+      try {
+        await streamDownload({
+          url,
+          title: t.title,
+          artist: t.artist ?? undefined,
+          album: t.album ?? undefined,
+        });
+        ok++;
+      } catch (err) {
+        console.warn(`skipped ${t.title}:`, err);
+        fail++;
+      }
+    }
+    setBulkDownloading(false);
+    toast.success(`Downloaded ${ok} of ${tracks.length}`, {
+      id: pending,
+      description: fail > 0 ? `${fail} failed` : undefined,
+    });
+    await refresh();
+    await refreshStats();
+    await refreshPlaylistTracks();
+  }
+
+  async function downloadAllMissing() {
+    await downloadBatch(remoteOnly, "saved tracks");
+  }
+
+  async function downloadMissingInActivePlaylist() {
+    if (missingInActivePlaylist.length === 0 || !activePlaylistId) return;
+    await downloadBatch(
+      missingInActivePlaylist,
+      activeCloudPlaylist?.name ?? "playlist",
+    );
+    await onPlaylistMutated();
   }
 
   async function onTagMutated() {
     await refresh();
     await refreshPlaylistTracks();
     await refreshTags();
+    if (user) {
+      try {
+        const [tRes, lRes] = await Promise.all([
+          fetch("/api/tags"),
+          fetch("/api/library"),
+        ]);
+        const { tags: fresh } = (await tRes.json()) as { tags: Tag[] };
+        const { tracks: libTracks } = (await lRes.json()) as {
+          tracks: LibraryTrack[];
+        };
+        await pushAllTagsToCloud(user.uid, fresh);
+        await pushAllTrackTagsToCloud(user.uid, libTracks);
+      } catch (err) {
+        console.warn("sync tags failed:", err);
+      }
+    }
   }
 
   function playTrackInContext(track: LibraryTrack) {
@@ -415,6 +551,7 @@ export function LibraryView() {
         },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (user) await syncPlaylistToCloud(activePlaylistId);
     } catch (err) {
       toast.error("Reorder failed", {
         description: err instanceof Error ? err.message : String(err),
@@ -525,6 +662,22 @@ export function LibraryView() {
           >
             <ListPlus className="h-4 w-4" />
             Add songs
+          </Button>
+        )}
+        {activePlaylist && missingInActivePlaylist.length > 0 && (
+          <Button
+            variant="default"
+            onClick={downloadMissingInActivePlaylist}
+            disabled={bulkDownloading}
+            className="gap-2"
+            title="Download this playlist's tracks that aren't on this device"
+          >
+            {bulkDownloading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CloudDownload className="h-4 w-4" />
+            )}
+            Download {missingInActivePlaylist.length} missing
           </Button>
         )}
         <DropdownMenu>
@@ -686,11 +839,28 @@ export function LibraryView() {
 
           {user && filteredRemote.length > 0 && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Cloud className="h-4 w-4" />
-                <span className="font-medium">
-                  Saved on other devices ({filteredRemote.length})
-                </span>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Cloud className="h-4 w-4" />
+                  <span className="font-medium">
+                    Saved on other devices ({filteredRemote.length})
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={downloadAllMissing}
+                  disabled={bulkDownloading}
+                  className="gap-2"
+                  title="Download every saved track not already on this device"
+                >
+                  {bulkDownloading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  Download all {filteredRemote.length}
+                </Button>
               </div>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 <AnimatePresence mode="popLayout">

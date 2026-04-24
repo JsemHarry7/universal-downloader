@@ -18,11 +18,15 @@ export function tagRoutes() {
   });
 
   routes.post("/tags", async (c) => {
-    const body = await c.req.json<{ name?: string; color?: string }>();
+    const body = await c.req.json<{
+      name?: string;
+      color?: string;
+      id?: string;
+    }>();
     const name = body.name?.trim();
     if (!name) return c.json({ error: "name required" }, 400);
     try {
-      return c.json(createTag(getDb(), name, body.color));
+      return c.json(createTag(getDb(), name, body.color, body.id));
     } catch (err) {
       return c.json(
         { error: (err as Error).message || "couldn't create tag" },

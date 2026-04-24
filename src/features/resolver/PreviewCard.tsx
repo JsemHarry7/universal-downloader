@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/features/auth/useAuth";
-import { saveTrackCloud, syncKey } from "@/lib/sync";
+import { saveTrackCloud, syncKey, pushPlaylistByIdToCloud } from "@/lib/sync";
 import { streamDownload } from "@/lib/download-stream";
 import { NewPlaylistDialog } from "@/features/library/NewPlaylistDialog";
 import type { ResolvedItem, TrackMeta, Playlist } from "@/lib/types";
@@ -219,7 +219,10 @@ export function PreviewCard({ item, onClear }: PreviewCardProps) {
           description: outputs[0] ?? undefined,
         },
       );
-      if (selectedPlaylistId) await refreshPlaylists();
+      if (selectedPlaylistId) {
+        await refreshPlaylists();
+        if (user) await pushPlaylistByIdToCloud(user.uid, selectedPlaylistId);
+      }
     } catch (err) {
       setStatus({ kind: "idle" });
       toast.error("Download failed", {

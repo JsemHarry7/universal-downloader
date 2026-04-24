@@ -34,15 +34,28 @@ export function listTags(db: Database): Tag[] {
     .all() as Tag[];
 }
 
-export function createTag(db: Database, name: string, color?: string): Tag {
-  const id = randomUUID();
+export function createTag(
+  db: Database,
+  name: string,
+  color?: string,
+  id?: string,
+): Tag {
+  const finalId = id ?? randomUUID();
   const created_at = Date.now();
   const used = DEFAULT_COLORS[(countTags(db) % DEFAULT_COLORS.length)];
   const chosen = color ?? used;
   db.prepare(
-    "INSERT INTO tags (id, name, color, created_at) VALUES (?, ?, ?, ?)",
-  ).run(id, name, chosen, created_at);
-  return { id, name, color: chosen, created_at, track_count: 0 };
+    "INSERT OR IGNORE INTO tags (id, name, color, created_at) VALUES (?, ?, ?, ?)",
+  ).run(finalId, name, chosen, created_at);
+  const row = db
+    .prepare("SELECT id, name, color, created_at FROM tags WHERE id = ?")
+    .get(finalId) as {
+    id: string;
+    name: string;
+    color: string;
+    created_at: number;
+  };
+  return { ...row, track_count: 0 };
 }
 
 function countTags(db: Database): number {

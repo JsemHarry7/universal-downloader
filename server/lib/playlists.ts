@@ -22,13 +22,20 @@ export function listPlaylists(db: Database): Playlist[] {
     .all() as Playlist[];
 }
 
-export function createPlaylist(db: Database, name: string): Playlist {
-  const id = randomUUID();
+export function createPlaylist(
+  db: Database,
+  name: string,
+  id?: string,
+): Playlist {
+  const finalId = id ?? randomUUID();
   const created_at = Date.now();
   db.prepare(
-    "INSERT INTO playlists (id, name, created_at) VALUES (?, ?, ?)",
-  ).run(id, name, created_at);
-  return { id, name, created_at, track_count: 0 };
+    "INSERT OR IGNORE INTO playlists (id, name, created_at) VALUES (?, ?, ?)",
+  ).run(finalId, name, created_at);
+  const row = db
+    .prepare("SELECT id, name, created_at FROM playlists WHERE id = ?")
+    .get(finalId) as { id: string; name: string; created_at: number };
+  return { ...row, track_count: 0 };
 }
 
 export function renamePlaylist(

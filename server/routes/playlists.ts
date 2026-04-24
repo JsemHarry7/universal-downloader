@@ -18,10 +18,10 @@ export function playlistRoutes() {
   });
 
   routes.post("/playlists", async (c) => {
-    const body = await c.req.json<{ name?: string }>();
+    const body = await c.req.json<{ name?: string; id?: string }>();
     const name = body.name?.trim();
     if (!name) return c.json({ error: "name required" }, 400);
-    return c.json(createPlaylist(getDb(), name));
+    return c.json(createPlaylist(getDb(), name, body.id));
   });
 
   routes.patch("/playlists/:id", async (c) => {

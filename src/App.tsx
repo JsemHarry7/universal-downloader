@@ -14,6 +14,7 @@ import { AuthMenu } from "@/features/auth/AuthMenu";
 import { PlayerProvider } from "@/features/player/PlayerProvider";
 import { Player } from "@/features/player/Player";
 import { ShortcutsDialog } from "@/features/shortcuts/ShortcutsDialog";
+import { LegalNoticeLink } from "@/features/legal/LegalNotice";
 import { cn } from "@/lib/utils";
 import { detectSource } from "@/lib/detect-source";
 import type { ResolvedItem } from "@/lib/types";
@@ -88,6 +89,10 @@ export default function App() {
 
           <div className="flex items-center gap-3">
             <AuthMenu />
+            <LegalNoticeLink
+              className="hidden sm:inline"
+              label="Legal"
+            />
             <span className="hidden text-xs text-muted-foreground sm:inline">
               v0.1.0
             </span>
@@ -119,6 +124,11 @@ export default function App() {
                   <p className="text-muted-foreground">
                     Paste a Spotify or SoundCloud link — track, album, or
                     playlist — and we handle the rest.
+                  </p>
+                  <p className="text-xs text-muted-foreground/80">
+                    Personal use only. You're responsible for the ToS of the
+                    source service and copyright law in your country.{" "}
+                    <LegalNoticeLink label="Read the full notice" />
                   </p>
                 </div>
 

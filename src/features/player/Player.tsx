@@ -27,6 +27,38 @@ function formatTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
+interface ToggleIconButtonProps {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}
+
+function ToggleIconButton({
+  active,
+  onClick,
+  title,
+  children,
+}: ToggleIconButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={cn(
+        "relative inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors",
+        active
+          ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/15"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
+      )}
+    >
+      {children}
+      {active && (
+        <span className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-emerald-400" />
+      )}
+    </button>
+  );
+}
+
 export function Player() {
   const { state, currentTrack, dispatch, seek } = usePlayer();
   const [scrubbing, setScrubbing] = useState(false);
@@ -112,18 +144,13 @@ export function Player() {
               </div>
 
               <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <ToggleIconButton
+                  active={state.shuffle}
                   onClick={() => dispatch({ type: "TOGGLE_SHUFFLE" })}
-                  className={cn(
-                    "h-9 w-9",
-                    state.shuffle && "text-primary",
-                  )}
                   title="Shuffle (S)"
                 >
                   <Shuffle className="h-4 w-4" />
-                </Button>
+                </ToggleIconButton>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -155,18 +182,13 @@ export function Player() {
                 >
                   <SkipForward className="h-5 w-5" fill="currentColor" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <ToggleIconButton
+                  active={state.repeat !== "off"}
                   onClick={() => dispatch({ type: "CYCLE_REPEAT" })}
-                  className={cn(
-                    "h-9 w-9",
-                    state.repeat !== "off" && "text-primary",
-                  )}
                   title={`Repeat: ${state.repeat} (R)`}
                 >
                   <RepeatIcon className="h-4 w-4" />
-                </Button>
+                </ToggleIconButton>
               </div>
 
               <div className="hidden w-48 items-center gap-2 md:flex">

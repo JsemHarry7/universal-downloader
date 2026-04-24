@@ -106,5 +106,24 @@ export function playlistRoutes() {
     return c.json({ ok });
   });
 
+  routes.patch("/playlists/:id/tracks/order", async (c) => {
+    const body = await c.req.json<{ trackIds?: string[] }>();
+    if (!Array.isArray(body.trackIds)) {
+      return c.json({ error: "trackIds array required" }, 400);
+    }
+    const playlistId = c.req.param("id");
+    const db = getDb();
+    const upd = db.prepare(
+      "UPDATE playlist_tracks SET position = ? WHERE playlist_id = ? AND track_id = ?",
+    );
+    const txn = db.transaction((ids: string[]) => {
+      ids.forEach((trackId, pos) => {
+        upd.run(pos, playlistId, trackId);
+      });
+    });
+    txn(body.trackIds);
+    return c.json({ ok: true });
+  });
+
   return routes;
 }

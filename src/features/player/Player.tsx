@@ -12,6 +12,7 @@ import {
   Volume1,
   X,
   Music,
+  ListOrdered,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { usePlayer } from "./PlayerProvider";
 import { usePlayerShortcuts } from "./useKeyboardShortcuts";
+import { QueuePanel } from "./QueuePanel";
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return "0:00";
@@ -63,6 +65,7 @@ export function Player() {
   const { state, currentTrack, dispatch, seek } = usePlayer();
   const [scrubbing, setScrubbing] = useState(false);
   const [scrubValue, setScrubValue] = useState(0);
+  const [queueOpen, setQueueOpen] = useState(false);
 
   usePlayerShortcuts();
 
@@ -216,6 +219,19 @@ export function Player() {
               <Button
                 variant="ghost"
                 size="icon"
+                onClick={() => setQueueOpen(true)}
+                className={cn(
+                  "h-8 w-8 shrink-0",
+                  queueOpen && "bg-accent text-foreground",
+                )}
+                title={`Up next (${state.queue.length})`}
+              >
+                <ListOrdered className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => dispatch({ type: "STOP" })}
                 className="h-8 w-8 shrink-0"
                 title="Close player"
@@ -224,6 +240,7 @@ export function Player() {
               </Button>
             </div>
           </div>
+          <QueuePanel open={queueOpen} onClose={() => setQueueOpen(false)} />
         </motion.div>
       )}
     </AnimatePresence>

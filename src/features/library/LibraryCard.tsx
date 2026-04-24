@@ -9,6 +9,8 @@ import {
   SkipForward,
   User,
   Disc3,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -35,6 +37,8 @@ interface LibraryCardProps {
   playlists: Playlist[];
   activePlaylist: Playlist | null;
   tags: Tag[];
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
   onPlay: () => void;
   onPlayNext: () => void;
   onEnqueue: () => void;
@@ -45,6 +49,8 @@ interface LibraryCardProps {
   onArtistClick: () => void;
   onPlayArtist: () => void;
   onPlayAlbum: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
   onPlaylistMutated: () => void;
 }
 
@@ -62,6 +68,8 @@ export function LibraryCard({
   playlists,
   activePlaylist,
   tags,
+  canMoveUp,
+  canMoveDown,
   onPlay,
   onPlayNext,
   onEnqueue,
@@ -72,6 +80,8 @@ export function LibraryCard({
   onArtistClick,
   onPlayArtist,
   onPlayAlbum,
+  onMoveUp,
+  onMoveDown,
   onPlaylistMutated,
 }: LibraryCardProps) {
   const artworkUrl = track.has_artwork
@@ -279,12 +289,26 @@ export function LibraryCard({
         </ContextMenuSub>
 
         {activePlaylist && (
-          <ContextMenuItem
-            onClick={removeFromActive}
-            className="text-destructive focus:text-destructive"
-          >
-            Remove from "{activePlaylist.name}"
-          </ContextMenuItem>
+          <>
+            {onMoveUp && (
+              <ContextMenuItem onClick={onMoveUp} disabled={!canMoveUp}>
+                <ChevronUp className="mr-2 h-4 w-4" />
+                Move up
+              </ContextMenuItem>
+            )}
+            {onMoveDown && (
+              <ContextMenuItem onClick={onMoveDown} disabled={!canMoveDown}>
+                <ChevronDown className="mr-2 h-4 w-4" />
+                Move down
+              </ContextMenuItem>
+            )}
+            <ContextMenuItem
+              onClick={removeFromActive}
+              className="text-destructive focus:text-destructive"
+            >
+              Remove from "{activePlaylist.name}"
+            </ContextMenuItem>
+          </>
         )}
 
         <ContextMenuItem onClick={onEditTags}>

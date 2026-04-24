@@ -393,6 +393,33 @@ export function LibraryView() {
     toast.info(`Playing ${album.length} tracks from ${track.album}`);
   }
 
+  async function movePlaylistTrack(track: LibraryTrack, direction: -1 | 1) {
+    if (!activePlaylistId) return;
+    const idx = playlistTracks.findIndex((t) => t.id === track.id);
+    if (idx < 0) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= playlistTracks.length) return;
+    const reordered = [...playlistTracks];
+    [reordered[idx], reordered[newIdx]] = [reordered[newIdx], reordered[idx]];
+    setPlaylistTracks(reordered);
+    try {
+      const res = await fetch(
+        `/api/playlists/${activePlaylistId}/tracks/order`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ trackIds: reordered.map((t) => t.id) }),
+        },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      toast.error("Reorder failed", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+      await refreshPlaylistTracks();
+    }
+  }
+
   return (
     <div className="space-y-5 pb-32">
       <StatsPanel stats={stats} />
@@ -590,36 +617,57 @@ export function LibraryView() {
           {filtered.length > 0 && (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               <AnimatePresence mode="popLayout">
-                {filtered.map((t, i) => (
-                  <LibraryCard
-                    key={t.id}
-                    track={t}
-                    index={i}
-                    isPlaying={nowPlaying?.id === t.id}
-                    playlists={playlists}
-                    activePlaylist={activePlaylist}
-                    tags={tags}
-                    onPlay={() => playTrackInContext(t)}
-                    onPlayNext={() =>
-                      playerDispatch({ type: "PLAY_NEXT", track: t })
-                    }
-                    onEnqueue={() =>
-                      playerDispatch({ type: "ENQUEUE", track: t })
-                    }
-                    onRename={() => setRenaming(t)}
-                    onDelete={() => setToDelete(t)}
-                    onEditTags={() => setTaggingTrack(t)}
-                    onTagClick={(tagId) =>
-                      setActiveTagId(tagId === activeTagId ? null : tagId)
-                    }
-                    onArtistClick={() => {
-                      if (t.artist) setArtistFilter(t.artist);
-                    }}
-                    onPlayArtist={() => playArtist(t)}
-                    onPlayAlbum={() => playAlbum(t)}
-                    onPlaylistMutated={onPlaylistMutated}
-                  />
-                ))}
+                {filtered.map((t, i) => {
+                  const pIdx = activePlaylistId
+                    ? playlistTracks.findIndex((pt) => pt.id === t.id)
+                    : -1;
+                  return (
+                    <LibraryCard
+                      key={t.id}
+                      track={t}
+                      index={i}
+                      isPlaying={nowPlaying?.id === t.id}
+                      playlists={playlists}
+                      activePlaylist={activePlaylist}
+                      tags={tags}
+                      canMoveUp={activePlaylistId !== null && pIdx > 0}
+                      canMoveDown={
+                        activePlaylistId !== null &&
+                        pIdx >= 0 &&
+                        pIdx < playlistTracks.length - 1
+                      }
+                      onPlay={() => playTrackInContext(t)}
+                      onPlayNext={() =>
+                        playerDispatch({ type: "PLAY_NEXT", track: t })
+                      }
+                      onEnqueue={() =>
+                        playerDispatch({ type: "ENQUEUE", track: t })
+                      }
+                      onRename={() => setRenaming(t)}
+                      onDelete={() => setToDelete(t)}
+                      onEditTags={() => setTaggingTrack(t)}
+                      onTagClick={(tagId) =>
+                        setActiveTagId(tagId === activeTagId ? null : tagId)
+                      }
+                      onArtistClick={() => {
+                        if (t.artist) setArtistFilter(t.artist);
+                      }}
+                      onPlayArtist={() => playArtist(t)}
+                      onPlayAlbum={() => playAlbum(t)}
+                      onMoveUp={
+                        activePlaylistId
+                          ? () => movePlaylistTrack(t, -1)
+                          : undefined
+                      }
+                      onMoveDown={
+                        activePlaylistId
+                          ? () => movePlaylistTrack(t, 1)
+                          : undefined
+                      }
+                      onPlaylistMutated={onPlaylistMutated}
+                    />
+                  );
+                })}
               </AnimatePresence>
             </div>
           )}

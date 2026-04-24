@@ -107,6 +107,26 @@ export function libraryRoutes() {
     return c.json({ ok: true });
   });
 
+  routes.post("/library/batch-delete", async (c) => {
+    const body = await c.req.json<{ ids?: string[] }>();
+    if (!Array.isArray(body.ids) || body.ids.length === 0) {
+      return c.json({ error: "ids array required" }, 400);
+    }
+    const db = getDb();
+    let deleted = 0;
+    let failed = 0;
+    for (const id of body.ids) {
+      try {
+        const r = await deleteLibraryItem(db, id);
+        if (r.deleted) deleted++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+    }
+    return c.json({ deleted, failed });
+  });
+
   routes.patch("/library/:id", async (c) => {
     const body = await c.req.json<{
       title?: string;

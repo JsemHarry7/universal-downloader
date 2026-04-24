@@ -11,6 +11,7 @@ import {
   Disc3,
   ChevronUp,
   ChevronDown,
+  Check,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -39,6 +40,9 @@ interface LibraryCardProps {
   tags: Tag[];
   canMoveUp?: boolean;
   canMoveDown?: boolean;
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
   onPlay: () => void;
   onPlayNext: () => void;
   onEnqueue: () => void;
@@ -70,6 +74,9 @@ export function LibraryCard({
   tags,
   canMoveUp,
   canMoveDown,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
   onPlay,
   onPlayNext,
   onEnqueue,
@@ -130,41 +137,81 @@ export function LibraryCard({
     }
   }
 
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <motion.div
-          layout
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: Math.min(index * 0.02, 0.3) }}
-          className="group relative overflow-hidden rounded-lg border border-border/40 bg-card/40 backdrop-blur-sm transition-all hover:border-border hover:bg-card/60 hover:shadow-lg"
-        >
-          <div className="relative aspect-square overflow-hidden bg-muted">
-            {artworkUrl ? (
-              <img
-                src={artworkUrl}
-                alt={track.title}
-                className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                loading="lazy"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted-foreground/10">
-                <Music className="h-10 w-10 text-muted-foreground/50" />
-              </div>
-            )}
+  const cardContent = (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: Math.min(index * 0.02, 0.3) }}
+      onClick={selectMode ? onToggleSelect : undefined}
+      className={cn(
+        "group relative overflow-hidden rounded-lg border border-border/40 bg-card/40 backdrop-blur-sm transition-all hover:border-border hover:bg-card/60 hover:shadow-lg",
+        selectMode && "cursor-pointer select-none",
+        selected && "ring-2 ring-primary",
+      )}
+    >
+      <div className="relative aspect-square overflow-hidden bg-muted">
+        {artworkUrl ? (
+          <img
+            src={artworkUrl}
+            alt={track.title}
+            className="h-full w-full object-cover transition-transform group-hover:scale-105"
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted-foreground/10">
+            <Music className="h-10 w-10 text-muted-foreground/50" />
+          </div>
+        )}
 
+        {selectMode ? (
+          <div
+            className={cn(
+              "absolute inset-0 flex items-center justify-center transition-colors",
+              selected ? "bg-primary/40" : "bg-black/30 hover:bg-black/40",
+            )}
+          >
+            <div
+              className={cn(
+                "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors",
+                selected
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-white/70 bg-black/40",
+              )}
+            >
+              {selected && <Check className="h-5 w-5" />}
+            </div>
+          </div>
+        ) : (
+          <>
             <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 max-sm:bg-black/40 max-sm:opacity-100">
               <Button
                 size="icon"
                 variant="secondary"
                 className="h-12 w-12 rounded-full"
-                onClick={onPlay}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPlay();
+                }}
                 title="Play"
               >
                 <Play className="h-5 w-5" fill="currentColor" />
               </Button>
             </div>
+            <Button
+              size="icon"
+              variant="destructive"
+              className="absolute right-2 top-2 h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              title="Delete"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </>
+        )}
 
             {isPlaying && (
               <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-primary/90 px-2 py-0.5 text-xs font-medium text-primary-foreground">
@@ -225,7 +272,13 @@ export function LibraryCard({
             </div>
           </div>
         </motion.div>
-      </ContextMenuTrigger>
+  );
+
+  if (selectMode) return cardContent;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{cardContent}</ContextMenuTrigger>
 
       <ContextMenuContent className="w-56">
         <ContextMenuItem onClick={onPlay}>

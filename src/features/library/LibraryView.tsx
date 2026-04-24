@@ -15,6 +15,8 @@ import {
   CopyCheck,
   Download,
   CloudDownload,
+  CheckSquare,
+  Trash2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -94,6 +96,10 @@ export function LibraryView() {
   const [sortKey, setSortKey] = useState<"added" | "title" | "artist" | "duration">("added");
   const [cloudPlaylists, setCloudPlaylists] = useState<CloudPlaylist[]>([]);
   const [bulkDownloading, setBulkDownloading] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const { user, isConfigured: firebaseConfigured } = useAuth();
   const { currentTrack: nowPlaying, dispatch: playerDispatch } = usePlayer();
 
@@ -459,6 +465,82 @@ export function LibraryView() {
     await onPlaylistMutated();
   }
 
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function enterSelectMode() {
+    setSelectMode(true);
+    setSelectedIds(new Set());
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(new Set(filtered.map((t) => t.id)));
+  }
+
+  async function confirmBulkDelete() {
+    if (selectedIds.size === 0) return;
+    setBulkDeleteConfirm(false);
+    setBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+    try {
+      const res = await fetch("/api/library/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        deleted: number;
+        failed: number;
+      };
+      toast.success(`Deleted ${data.deleted} tracks`, {
+        description: data.failed > 0 ? `${data.failed} failed` : undefined,
+      });
+      if (nowPlaying && selectedIds.has(nowPlaying.id)) {
+        playerDispatch({ type: "STOP" });
+      }
+      await refresh();
+      await refreshStats();
+      await refreshPlaylistTracks();
+      // Push any playlists' updated track_keys to cloud (tracks gone from them)
+      if (user) {
+        const plRes = await fetch("/api/playlists");
+        if (plRes.ok) {
+          const { playlists: pls } = (await plRes.json()) as {
+            playlists: Playlist[];
+          };
+          for (const p of pls) await syncPlaylistToCloud(p.id);
+        }
+      }
+      exitSelectMode();
+    } catch (err) {
+      toast.error("Bulk delete failed", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
+  function playSelected() {
+    if (selectedIds.size === 0) return;
+    const queue = filtered.filter((t) => selectedIds.has(t.id));
+    if (queue.length === 0) return;
+    playerDispatch({ type: "PLAY_QUEUE", queue, startIndex: 0 });
+    exitSelectMode();
+  }
+
   async function onTagMutated() {
     await refresh();
     await refreshPlaylistTracks();
@@ -702,6 +784,17 @@ export function LibraryView() {
           </DropdownMenuContent>
         </DropdownMenu>
         <Button
+          variant={selectMode ? "default" : "outline"}
+          onClick={selectMode ? exitSelectMode : enterSelectMode}
+          className="gap-2"
+          title={selectMode ? "Exit select mode" : "Select multiple tracks"}
+        >
+          <CheckSquare className="h-4 w-4" />
+          <span className="hidden sm:inline">
+            {selectMode ? "Done" : "Select"}
+          </span>
+        </Button>
+        <Button
           variant="outline"
           onClick={() => setDupesOpen(true)}
           className="gap-2"
@@ -724,6 +817,62 @@ export function LibraryView() {
           {scanning ? "Scanning…" : "Rescan"}
         </Button>
       </div>
+
+      {selectMode && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="sticky top-16 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 backdrop-blur-md"
+        >
+          <span className="text-sm font-medium">
+            {selectedIds.size} selected
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={selectAllVisible}
+            disabled={filtered.length === 0}
+            className="h-7 text-xs"
+          >
+            Select all visible
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setSelectedIds(new Set())}
+            disabled={selectedIds.size === 0}
+            className="h-7 text-xs"
+          >
+            Clear
+          </Button>
+          <div className="ml-auto flex gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={playSelected}
+              disabled={selectedIds.size === 0}
+              className="gap-1.5"
+            >
+              <Play className="h-3.5 w-3.5" fill="currentColor" />
+              Play
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => setBulkDeleteConfirm(true)}
+              disabled={selectedIds.size === 0 || bulkDeleting}
+              className="gap-1.5"
+            >
+              {bulkDeleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Delete
+            </Button>
+          </div>
+        </motion.div>
+      )}
 
       {artistFilter && (
         <div className="flex items-center gap-2 text-xs">
@@ -801,6 +950,9 @@ export function LibraryView() {
                         pIdx >= 0 &&
                         pIdx < playlistTracks.length - 1
                       }
+                      selectMode={selectMode}
+                      selected={selectedIds.has(t.id)}
+                      onToggleSelect={() => toggleSelect(t.id)}
                       onPlay={() => playTrackInContext(t)}
                       onPlayNext={() =>
                         playerDispatch({ type: "PLAY_NEXT", track: t })
@@ -977,6 +1129,32 @@ export function LibraryView() {
               className="bg-destructive text-white hover:bg-destructive/90"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={bulkDeleteConfirm}
+        onOpenChange={(next) => !next && setBulkDeleteConfirm(false)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {selectedIds.size} track{selectedIds.size === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              These files will be permanently deleted from disk and removed
+              from every playlist. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmBulkDelete}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              Delete {selectedIds.size}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,5 +1,11 @@
-import { useState, type FormEvent } from "react";
-import { Link2, ClipboardPaste, Sparkles, Loader2 } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import {
+  Link2,
+  ClipboardPaste,
+  Sparkles,
+  Loader2,
+  ListPlus,
+} from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -9,10 +15,19 @@ import type { ResolvedItem } from "@/lib/types";
 
 interface UrlInputProps {
   onResolved: (item: ResolvedItem) => void;
+  onOpenBatch: () => void;
+  prefillUrl?: string;
 }
 
-export function UrlInput({ onResolved }: UrlInputProps) {
-  const [url, setUrl] = useState("");
+export function UrlInput({ onResolved, onOpenBatch, prefillUrl }: UrlInputProps) {
+  const [url, setUrl] = useState(prefillUrl ?? "");
+
+  useEffect(() => {
+    if (prefillUrl && prefillUrl !== url) {
+      setUrl(prefillUrl);
+    }
+  }, [prefillUrl]);
+
   const [loading, setLoading] = useState(false);
   const detected = url.trim() ? detectSource(url) : null;
   const ready = !!detected && detected.source !== "unknown";
@@ -95,6 +110,16 @@ export function UrlInput({ onResolved }: UrlInputProps) {
         title="Paste from clipboard"
       >
         <ClipboardPaste className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={onOpenBatch}
+        disabled={loading}
+        title="Batch download multiple URLs"
+      >
+        <ListPlus className="h-4 w-4" />
       </Button>
       <Button type="submit" size="sm" className="h-9" disabled={!ready || loading}>
         {loading ? (

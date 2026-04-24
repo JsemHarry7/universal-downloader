@@ -1,14 +1,18 @@
 import { useState } from "react";
 import { Headphones, Download, Library } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { UrlInput } from "@/features/resolver/UrlInput";
 import { EmptyState } from "@/features/resolver/EmptyState";
 import { PreviewCard } from "@/features/resolver/PreviewCard";
+import { BatchDialog } from "@/features/resolver/BatchDialog";
+import { useClipboardMonitor } from "@/features/resolver/useClipboardMonitor";
 import { LibraryView } from "@/features/library/LibraryView";
 import { AuthMenu } from "@/features/auth/AuthMenu";
 import { cn } from "@/lib/utils";
+import { detectSource } from "@/lib/detect-source";
 import type { ResolvedItem } from "@/lib/types";
 
 type View = "download" | "library";
@@ -16,6 +20,38 @@ type View = "download" | "library";
 export default function App() {
   const [view, setView] = useState<View>("download");
   const [resolved, setResolved] = useState<ResolvedItem | null>(null);
+  const [prefillUrl, setPrefillUrl] = useState<string | undefined>(undefined);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchUrls, setBatchUrls] = useState<string[] | undefined>(undefined);
+
+  useClipboardMonitor({
+    onSingleUrl: (url) => {
+      const detected = detectSource(url);
+      toast.info(`${detected.source} ${detected.kind} detected`, {
+        description: "Click Use to paste into the input.",
+        action: {
+          label: "Use",
+          onClick: () => {
+            setPrefillUrl(url);
+            setView("download");
+          },
+        },
+      });
+    },
+    onManyUrls: (urls) => {
+      toast.info(`${urls.length} URLs detected`, {
+        action: {
+          label: "Open batch",
+          onClick: () => {
+            setBatchUrls(urls);
+            setBatchOpen(true);
+            setView("download");
+          },
+        },
+      });
+    },
+  });
+
 
   return (
     <TooltipProvider>
@@ -82,7 +118,14 @@ export default function App() {
                   </p>
                 </div>
 
-                <UrlInput onResolved={setResolved} />
+                <UrlInput
+                  onResolved={setResolved}
+                  onOpenBatch={() => {
+                    setBatchUrls(undefined);
+                    setBatchOpen(true);
+                  }}
+                  prefillUrl={prefillUrl}
+                />
 
                 <AnimatePresence mode="wait">
                   {resolved ? (
@@ -109,6 +152,15 @@ export default function App() {
             )}
           </AnimatePresence>
         </main>
+
+        <BatchDialog
+          open={batchOpen}
+          initialUrls={batchUrls}
+          onClose={() => setBatchOpen(false)}
+          onFinished={() => {
+            /* library auto-rescans via fs.watch */
+          }}
+        />
 
         <Toaster richColors position="bottom-right" />
       </div>

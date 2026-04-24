@@ -153,7 +153,7 @@ export function LyricsPanel({ open, onClose }: LyricsPanelProps) {
                   {currentTrack.artist && <> — {currentTrack.artist}</>}
                 </div>
 
-                <div ref={containerRef} className="flex-1 overflow-hidden">
+                <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden">
                   <ScrollArea className="h-full">
                     {loading ? (
                       <div className="flex items-center justify-center py-20 text-muted-foreground">

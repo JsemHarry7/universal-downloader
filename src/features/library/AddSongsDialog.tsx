@@ -255,7 +255,7 @@ export function AddSongsDialog({
           </div>
         </div>
 
-        <ScrollArea className="flex-1 rounded-md border border-border/50">
+        <ScrollArea className="min-h-0 flex-1 rounded-md border border-border/50">
           {loading ? (
             <div className="flex items-center justify-center py-20 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />

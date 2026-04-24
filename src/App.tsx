@@ -13,6 +13,7 @@ import { LibraryView } from "@/features/library/LibraryView";
 import { AuthMenu } from "@/features/auth/AuthMenu";
 import { PlayerProvider } from "@/features/player/PlayerProvider";
 import { Player } from "@/features/player/Player";
+import { ShortcutsDialog } from "@/features/shortcuts/ShortcutsDialog";
 import { cn } from "@/lib/utils";
 import { detectSource } from "@/lib/detect-source";
 import type { ResolvedItem } from "@/lib/types";
@@ -166,6 +167,7 @@ export default function App() {
         />
 
         <Player />
+        <ShortcutsDialog />
         <Toaster richColors position="bottom-right" />
       </div>
       </TooltipProvider>

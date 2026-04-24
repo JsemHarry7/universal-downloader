@@ -9,7 +9,17 @@ import {
   Shuffle,
   X as XIcon,
   ListPlus,
+  ArrowUpDown,
+  User,
+  Check,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -64,6 +74,8 @@ export function LibraryView() {
   const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false);
   const [playlistToDelete, setPlaylistToDelete] = useState<Playlist | null>(null);
   const [addSongsFor, setAddSongsFor] = useState<Playlist | null>(null);
+  const [artistFilter, setArtistFilter] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<"added" | "title" | "artist" | "duration">("added");
   const { user, isConfigured: firebaseConfigured } = useAuth();
   const { currentTrack: nowPlaying, dispatch: playerDispatch } = usePlayer();
 
@@ -216,6 +228,11 @@ export function LibraryView() {
     return visibleTracks.filter((t) => t.tag_ids.includes(activeTagId));
   }, [visibleTracks, activeTagId]);
 
+  const afterArtistFilter = useMemo(() => {
+    if (!artistFilter) return afterTagFilter;
+    return afterTagFilter.filter((t) => t.artist === artistFilter);
+  }, [afterTagFilter, artistFilter]);
+
   const localKeys = useMemo(
     () => new Set(tracks.map((t) => matchKey(t))),
     [tracks],
@@ -227,18 +244,34 @@ export function LibraryView() {
   );
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return afterTagFilter;
-    const q = search.toLowerCase();
-    return afterTagFilter.filter(
-      (t) =>
-        t.title.toLowerCase().includes(q) ||
-        (t.artist?.toLowerCase().includes(q) ?? false) ||
-        (t.album?.toLowerCase().includes(q) ?? false),
-    );
-  }, [afterTagFilter, search]);
+    const q = search.trim().toLowerCase();
+    const base = q
+      ? afterArtistFilter.filter(
+          (t) =>
+            t.title.toLowerCase().includes(q) ||
+            (t.artist?.toLowerCase().includes(q) ?? false) ||
+            (t.album?.toLowerCase().includes(q) ?? false),
+        )
+      : [...afterArtistFilter];
+    switch (sortKey) {
+      case "title":
+        base.sort((a, b) => a.title.localeCompare(b.title));
+        break;
+      case "artist":
+        base.sort((a, b) => (a.artist ?? "").localeCompare(b.artist ?? ""));
+        break;
+      case "duration":
+        base.sort((a, b) => b.duration_s - a.duration_s);
+        break;
+      case "added":
+      default:
+        base.sort((a, b) => b.added_at - a.added_at);
+    }
+    return base;
+  }, [afterArtistFilter, search, sortKey]);
 
   const filteredRemote = useMemo(() => {
-    if (activePlaylistId || activeTagId) return [];
+    if (activePlaylistId || activeTagId || artistFilter) return [];
     if (!search.trim()) return remoteOnly;
     const q = search.toLowerCase();
     return remoteOnly.filter(
@@ -247,7 +280,14 @@ export function LibraryView() {
         (t.artist?.toLowerCase().includes(q) ?? false) ||
         (t.album?.toLowerCase().includes(q) ?? false),
     );
-  }, [remoteOnly, search, activePlaylistId, activeTagId]);
+  }, [remoteOnly, search, activePlaylistId, activeTagId, artistFilter]);
+
+  const SORT_LABELS: Record<typeof sortKey, string> = {
+    added: "Recently added",
+    title: "Title A–Z",
+    artist: "Artist A–Z",
+    duration: "Duration",
+  };
 
   async function confirmDelete() {
     if (!toDelete) return;
@@ -325,6 +365,32 @@ export function LibraryView() {
     const startIndex = Math.floor(Math.random() * filtered.length);
     playerDispatch({ type: "PLAY_QUEUE", queue: filtered, startIndex });
     setTimeout(() => playerDispatch({ type: "TOGGLE_SHUFFLE" }), 0);
+  }
+
+  function playArtist(track: LibraryTrack) {
+    if (!track.artist) return;
+    const byArtist = tracks.filter((t) => t.artist === track.artist);
+    if (byArtist.length === 0) return;
+    const startIndex = Math.max(
+      0,
+      byArtist.findIndex((t) => t.id === track.id),
+    );
+    playerDispatch({ type: "PLAY_QUEUE", queue: byArtist, startIndex });
+    toast.info(`Playing ${byArtist.length} tracks by ${track.artist}`);
+  }
+
+  function playAlbum(track: LibraryTrack) {
+    if (!track.album) return;
+    const album = tracks.filter(
+      (t) => t.album === track.album && t.artist === track.artist,
+    );
+    if (album.length === 0) return;
+    const startIndex = Math.max(
+      0,
+      album.findIndex((t) => t.id === track.id),
+    );
+    playerDispatch({ type: "PLAY_QUEUE", queue: album, startIndex });
+    toast.info(`Playing ${album.length} tracks from ${track.album}`);
   }
 
   return (
@@ -431,6 +497,27 @@ export function LibraryView() {
             Add songs
           </Button>
         )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="gap-2" title="Sort library">
+              <ArrowUpDown className="h-4 w-4" />
+              <span className="hidden sm:inline">{SORT_LABELS[sortKey]}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+            {(Object.keys(SORT_LABELS) as Array<keyof typeof SORT_LABELS>).map(
+              (k) => (
+                <DropdownMenuItem key={k} onClick={() => setSortKey(k)}>
+                  {sortKey === k && <Check className="mr-2 h-4 w-4" />}
+                  <span className={sortKey === k ? "" : "ml-6"}>
+                    {SORT_LABELS[k]}
+                  </span>
+                </DropdownMenuItem>
+              ),
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button
           variant="outline"
           onClick={rescan}
@@ -445,6 +532,23 @@ export function LibraryView() {
           {scanning ? "Scanning…" : "Rescan"}
         </Button>
       </div>
+
+      {artistFilter && (
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-muted-foreground">Filter:</span>
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 font-medium text-primary">
+            <User className="h-3 w-3" />
+            {artistFilter}
+            <button
+              onClick={() => setArtistFilter(null)}
+              className="-mr-0.5 opacity-60 hover:opacity-100"
+              title="Clear artist filter"
+            >
+              <XIcon className="h-3 w-3" />
+            </button>
+          </span>
+        </div>
+      )}
 
       {loading && tracks.length === 0 ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
@@ -496,12 +600,23 @@ export function LibraryView() {
                     activePlaylist={activePlaylist}
                     tags={tags}
                     onPlay={() => playTrackInContext(t)}
+                    onPlayNext={() =>
+                      playerDispatch({ type: "PLAY_NEXT", track: t })
+                    }
+                    onEnqueue={() =>
+                      playerDispatch({ type: "ENQUEUE", track: t })
+                    }
                     onRename={() => setRenaming(t)}
                     onDelete={() => setToDelete(t)}
                     onEditTags={() => setTaggingTrack(t)}
                     onTagClick={(tagId) =>
                       setActiveTagId(tagId === activeTagId ? null : tagId)
                     }
+                    onArtistClick={() => {
+                      if (t.artist) setArtistFilter(t.artist);
+                    }}
+                    onPlayArtist={() => playArtist(t)}
+                    onPlayAlbum={() => playAlbum(t)}
                     onPlaylistMutated={onPlaylistMutated}
                   />
                 ))}

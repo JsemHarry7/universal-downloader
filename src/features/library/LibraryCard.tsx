@@ -1,15 +1,29 @@
-import { Play, Pencil, Trash2, Music, ListPlus, Tag as TagIcon } from "lucide-react";
+import {
+  Play,
+  Pencil,
+  Trash2,
+  Music,
+  Tag as TagIcon,
+  ListPlus,
+  ListEnd,
+  SkipForward,
+  User,
+  Disc3,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import type { LibraryTrack, Playlist, Tag } from "@/lib/types";
 import { tagClass } from "./TagEditor";
@@ -22,10 +36,15 @@ interface LibraryCardProps {
   activePlaylist: Playlist | null;
   tags: Tag[];
   onPlay: () => void;
+  onPlayNext: () => void;
+  onEnqueue: () => void;
   onRename: () => void;
   onDelete: () => void;
   onEditTags: () => void;
   onTagClick: (tagId: string) => void;
+  onArtistClick: () => void;
+  onPlayArtist: () => void;
+  onPlayAlbum: () => void;
   onPlaylistMutated: () => void;
 }
 
@@ -44,10 +63,15 @@ export function LibraryCard({
   activePlaylist,
   tags,
   onPlay,
+  onPlayNext,
+  onEnqueue,
   onRename,
   onDelete,
   onEditTags,
   onTagClick,
+  onArtistClick,
+  onPlayArtist,
+  onPlayAlbum,
   onPlaylistMutated,
 }: LibraryCardProps) {
   const artworkUrl = track.has_artwork
@@ -97,147 +121,191 @@ export function LibraryCard({
   }
 
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: Math.min(index * 0.02, 0.3) }}
-      className="group relative overflow-hidden rounded-lg border border-border/40 bg-card/40 backdrop-blur-sm transition-all hover:border-border hover:bg-card/60 hover:shadow-lg"
-    >
-      <div className="relative aspect-square overflow-hidden bg-muted">
-        {artworkUrl ? (
-          <img
-            src={artworkUrl}
-            alt={track.title}
-            className="h-full w-full object-cover transition-transform group-hover:scale-105"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted-foreground/10">
-            <Music className="h-10 w-10 text-muted-foreground/50" />
-          </div>
-        )}
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <motion.div
+          layout
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: Math.min(index * 0.02, 0.3) }}
+          className="group relative overflow-hidden rounded-lg border border-border/40 bg-card/40 backdrop-blur-sm transition-all hover:border-border hover:bg-card/60 hover:shadow-lg"
+        >
+          <div className="relative aspect-square overflow-hidden bg-muted">
+            {artworkUrl ? (
+              <img
+                src={artworkUrl}
+                alt={track.title}
+                className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                loading="lazy"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted-foreground/10">
+                <Music className="h-10 w-10 text-muted-foreground/50" />
+              </div>
+            )}
 
-        <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 max-sm:bg-black/40 max-sm:opacity-100">
-          <Button
-            size="icon"
-            variant="secondary"
-            className="h-10 w-10 rounded-full"
-            onClick={onPlay}
-            title="Play"
-          >
-            <Play className="h-4 w-4" fill="currentColor" />
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+            <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 max-sm:bg-black/40 max-sm:opacity-100">
               <Button
                 size="icon"
                 variant="secondary"
-                className="h-10 w-10 rounded-full"
-                title="Add to playlist"
+                className="h-12 w-12 rounded-full"
+                onClick={onPlay}
+                title="Play"
               >
-                <ListPlus className="h-4 w-4" />
+                <Play className="h-5 w-5" fill="currentColor" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="center">
-              <DropdownMenuLabel>Add to playlist</DropdownMenuLabel>
-              {playlists.length === 0 ? (
-                <DropdownMenuItem disabled>No playlists yet</DropdownMenuItem>
-              ) : (
-                playlists.map((p) => (
-                  <DropdownMenuItem key={p.id} onClick={() => addTo(p)}>
-                    {p.name}
+            </div>
+
+            {isPlaying && (
+              <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-primary/90 px-2 py-0.5 text-xs font-medium text-primary-foreground">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-foreground/70 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-foreground" />
+                </span>
+                Playing
+              </div>
+            )}
+          </div>
+
+          <div className="p-3">
+            <h3 className="truncate text-sm font-medium">{track.title}</h3>
+            {track.artist ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onArtistClick();
+                }}
+                className="block w-full truncate text-left text-xs text-muted-foreground transition-colors hover:text-foreground hover:underline"
+                title={`Filter to ${track.artist}`}
+              >
+                {track.artist}
+              </button>
+            ) : (
+              <p className="truncate text-xs text-muted-foreground">
+                Unknown artist
+              </p>
+            )}
+            {trackTags.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {trackTags.slice(0, 3).map((tag) => (
+                  <button
+                    key={tag.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTagClick(tag.id);
+                    }}
+                    className={cn(
+                      "rounded border px-1.5 py-0.5 text-[10px] font-medium",
+                      tagClass(tag.color),
+                    )}
+                  >
+                    {tag.name}
+                  </button>
+                ))}
+                {trackTags.length > 3 && (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    +{trackTags.length - 3}
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+              <span>{formatDuration(track.duration_s)}</span>
+              <span className="uppercase">{track.format}</span>
+            </div>
+          </div>
+        </motion.div>
+      </ContextMenuTrigger>
+
+      <ContextMenuContent className="w-56">
+        <ContextMenuItem onClick={onPlay}>
+          <Play className="mr-2 h-4 w-4" />
+          Play now
+        </ContextMenuItem>
+        <ContextMenuItem onClick={onPlayNext}>
+          <SkipForward className="mr-2 h-4 w-4" />
+          Play next
+        </ContextMenuItem>
+        <ContextMenuItem onClick={onEnqueue}>
+          <ListEnd className="mr-2 h-4 w-4" />
+          Add to queue
+        </ContextMenuItem>
+
+        {track.artist && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onClick={onPlayArtist}>
+              <User className="mr-2 h-4 w-4" />
+              Play all by {track.artist}
+            </ContextMenuItem>
+            <ContextMenuItem onClick={onArtistClick}>
+              <User className="mr-2 h-4 w-4" />
+              Go to artist
+            </ContextMenuItem>
+          </>
+        )}
+
+        {track.album && (
+          <ContextMenuItem onClick={onPlayAlbum}>
+            <Disc3 className="mr-2 h-4 w-4" />
+            Play album
+          </ContextMenuItem>
+        )}
+
+        <ContextMenuSeparator />
+
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>
+            <ListPlus className="mr-2 h-4 w-4" />
+            Add to playlist
+          </ContextMenuSubTrigger>
+          <ContextMenuSubContent className="w-48">
+            {playlists.length === 0 ? (
+              <ContextMenuItem disabled>No playlists yet</ContextMenuItem>
+            ) : (
+              <>
+                <ContextMenuLabel>Choose one</ContextMenuLabel>
+                {playlists.map((p) => (
+                  <ContextMenuItem key={p.id} onClick={() => addTo(p)}>
+                    <span className="truncate">{p.name}</span>
                     <span className="ml-auto text-xs text-muted-foreground">
                       {p.track_count}
                     </span>
-                  </DropdownMenuItem>
-                ))
-              )}
-              {activePlaylist && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={removeFromActive}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    Remove from "{activePlaylist.name}"
-                  </DropdownMenuItem>
-                </>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onEditTags}>
-                <TagIcon className="mr-2 h-4 w-4" />
-                Edit tags…
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Button
-            size="icon"
-            variant="secondary"
-            className="h-10 w-10 rounded-full"
-            onClick={onRename}
-            title="Rename"
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="destructive"
-            className="h-10 w-10 rounded-full"
-            onClick={onDelete}
-            title="Delete"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-
-        {isPlaying && (
-          <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-primary/90 px-2 py-0.5 text-xs font-medium text-primary-foreground">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-foreground/70 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-foreground" />
-            </span>
-            Playing
-          </div>
-        )}
-      </div>
-
-      <div className="p-3">
-        <h3 className="truncate text-sm font-medium">{track.title}</h3>
-        <p className="truncate text-xs text-muted-foreground">
-          {track.artist ?? "Unknown artist"}
-        </p>
-        {trackTags.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {trackTags.slice(0, 3).map((tag) => (
-              <button
-                key={tag.id}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onTagClick(tag.id);
-                }}
-                className={cn(
-                  "rounded border px-1.5 py-0.5 text-[10px] font-medium",
-                  tagClass(tag.color),
-                )}
-              >
-                {tag.name}
-              </button>
-            ))}
-            {trackTags.length > 3 && (
-              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                +{trackTags.length - 3}
-              </span>
+                  </ContextMenuItem>
+                ))}
+              </>
             )}
-          </div>
+          </ContextMenuSubContent>
+        </ContextMenuSub>
+
+        {activePlaylist && (
+          <ContextMenuItem
+            onClick={removeFromActive}
+            className="text-destructive focus:text-destructive"
+          >
+            Remove from "{activePlaylist.name}"
+          </ContextMenuItem>
         )}
-        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-          <span>{formatDuration(track.duration_s)}</span>
-          <span className="uppercase">{track.format}</span>
-        </div>
-      </div>
-    </motion.div>
+
+        <ContextMenuItem onClick={onEditTags}>
+          <TagIcon className="mr-2 h-4 w-4" />
+          Edit tags…
+        </ContextMenuItem>
+
+        <ContextMenuSeparator />
+
+        <ContextMenuItem onClick={onRename}>
+          <Pencil className="mr-2 h-4 w-4" />
+          Rename…
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={onDelete}
+          className="text-destructive focus:text-destructive"
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete from disk
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

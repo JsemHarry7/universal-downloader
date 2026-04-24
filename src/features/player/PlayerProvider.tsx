@@ -28,6 +28,10 @@ export interface PlayerState {
 type Action =
   | { type: "PLAY_QUEUE"; queue: LibraryTrack[]; startIndex?: number }
   | { type: "PLAY_TRACK"; track: LibraryTrack }
+  | { type: "ENQUEUE"; track: LibraryTrack }
+  | { type: "PLAY_NEXT"; track: LibraryTrack }
+  | { type: "REMOVE_FROM_QUEUE"; orderPosition: number }
+  | { type: "REORDER_QUEUE"; from: number; to: number }
   | { type: "TOGGLE_PLAY" }
   | { type: "PLAY" }
   | { type: "PAUSE" }
@@ -94,6 +98,82 @@ function reducer(state: PlayerState, action: Action): PlayerState {
         queue: [action.track],
         startIndex: 0,
       });
+    }
+
+    case "ENQUEUE": {
+      const newQueueIdx = state.queue.length;
+      const newQueue = [...state.queue, action.track];
+      const newOrder = [...state.order, newQueueIdx];
+      if (state.queue.length === 0) {
+        return {
+          ...state,
+          queue: newQueue,
+          order: newOrder,
+          index: 0,
+          playing: true,
+        };
+      }
+      return { ...state, queue: newQueue, order: newOrder };
+    }
+
+    case "PLAY_NEXT": {
+      const newQueueIdx = state.queue.length;
+      const newQueue = [...state.queue, action.track];
+      const newOrder = [...state.order];
+      if (state.queue.length === 0) {
+        return {
+          ...state,
+          queue: newQueue,
+          order: [newQueueIdx],
+          index: 0,
+          playing: true,
+        };
+      }
+      newOrder.splice(state.index + 1, 0, newQueueIdx);
+      return { ...state, queue: newQueue, order: newOrder };
+    }
+
+    case "REMOVE_FROM_QUEUE": {
+      const pos = action.orderPosition;
+      if (pos < 0 || pos >= state.order.length) return state;
+      const newOrder = state.order.filter((_, i) => i !== pos);
+      if (newOrder.length === 0) {
+        return { ...state, queue: [], order: [], index: 0, playing: false };
+      }
+      let newIndex = state.index;
+      if (pos < state.index) newIndex = state.index - 1;
+      else if (pos === state.index) {
+        newIndex = Math.min(state.index, newOrder.length - 1);
+      }
+      return {
+        ...state,
+        order: newOrder,
+        index: newIndex,
+        currentTime: pos === state.index ? 0 : state.currentTime,
+      };
+    }
+
+    case "REORDER_QUEUE": {
+      const { from, to } = action;
+      if (
+        from < 0 ||
+        from >= state.order.length ||
+        to < 0 ||
+        to >= state.order.length ||
+        from === to
+      ) {
+        return state;
+      }
+      const newOrder = [...state.order];
+      const [moved] = newOrder.splice(from, 1);
+      newOrder.splice(to, 0, moved);
+      const currentTrackQueueIdx = state.order[state.index];
+      const newIndex = newOrder.findIndex((q) => q === currentTrackQueueIdx);
+      return {
+        ...state,
+        order: newOrder,
+        index: newIndex === -1 ? state.index : newIndex,
+      };
     }
 
     case "TOGGLE_PLAY":

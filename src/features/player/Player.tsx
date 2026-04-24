@@ -88,7 +88,8 @@ export function Player() {
   const RepeatIcon = state.repeat === "one" ? Repeat1 : Repeat;
 
   return (
-    <AnimatePresence>
+    <>
+      <AnimatePresence>
       {currentTrack && (
         <motion.div
           key="player"
@@ -256,10 +257,11 @@ export function Player() {
               </Button>
             </div>
           </div>
-          <QueuePanel open={queueOpen} onClose={() => setQueueOpen(false)} />
-          <LyricsPanel open={lyricsOpen} onClose={() => setLyricsOpen(false)} />
         </motion.div>
       )}
     </AnimatePresence>
+    <QueuePanel open={queueOpen} onClose={() => setQueueOpen(false)} />
+    <LyricsPanel open={lyricsOpen} onClose={() => setLyricsOpen(false)} />
+    </>
   );
 }

@@ -46,3 +46,10 @@ export interface SavedTrack {
   artwork_url: string | null;
   saved_at?: unknown;
 }
+
+export interface Playlist {
+  id: string;
+  name: string;
+  created_at: number;
+  track_count: number;
+}

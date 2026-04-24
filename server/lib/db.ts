@@ -35,5 +35,22 @@ function initSchema(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_library_artist ON library(artist);
     CREATE INDEX IF NOT EXISTS idx_library_added ON library(added_at DESC);
+
+    CREATE TABLE IF NOT EXISTS playlists (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS playlist_tracks (
+      playlist_id TEXT NOT NULL,
+      track_id TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      added_at INTEGER NOT NULL,
+      PRIMARY KEY (playlist_id, track_id),
+      FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+      FOREIGN KEY (track_id) REFERENCES library(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_playlist_tracks_pos ON playlist_tracks(playlist_id, position);
   `);
 }

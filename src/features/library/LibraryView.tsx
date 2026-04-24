@@ -14,23 +14,32 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { LibraryTrack, SavedTrack } from "@/lib/types";
+import type { LibraryTrack, SavedTrack, Playlist } from "@/lib/types";
 import { LibraryCard } from "./LibraryCard";
 import { MiniPlayer } from "./MiniPlayer";
 import { RenameDialog } from "./RenameDialog";
 import { SavedTrackCard } from "./SavedTrackCard";
+import { PlaylistBar } from "./PlaylistBar";
+import { NewPlaylistDialog } from "./NewPlaylistDialog";
 import { useAuth } from "@/features/auth/useAuth";
 import { fetchSavedTracks, matchKey } from "@/lib/sync";
 
 export function LibraryView() {
   const [tracks, setTracks] = useState<LibraryTrack[]>([]);
   const [saved, setSaved] = useState<SavedTrack[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
+  const [playlistTracks, setPlaylistTracks] = useState<LibraryTrack[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [playing, setPlaying] = useState<LibraryTrack | null>(null);
   const [renaming, setRenaming] = useState<LibraryTrack | null>(null);
   const [toDelete, setToDelete] = useState<LibraryTrack | null>(null);
+  const [playlistDialogTarget, setPlaylistDialogTarget] =
+    useState<Playlist | null>(null);
+  const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false);
+  const [playlistToDelete, setPlaylistToDelete] = useState<Playlist | null>(null);
   const { user, isConfigured: firebaseConfigured } = useAuth();
 
   const refresh = useCallback(async () => {
@@ -48,6 +57,39 @@ export function LibraryView() {
       setLoading(false);
     }
   }, []);
+
+  const refreshPlaylists = useCallback(async () => {
+    try {
+      const res = await fetch("/api/playlists");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { playlists: Playlist[] };
+      setPlaylists(data.playlists);
+      // drop active if it was deleted
+      if (
+        activePlaylistId &&
+        !data.playlists.some((p) => p.id === activePlaylistId)
+      ) {
+        setActivePlaylistId(null);
+      }
+    } catch (err) {
+      console.warn("fetch playlists failed:", err);
+    }
+  }, [activePlaylistId]);
+
+  const refreshPlaylistTracks = useCallback(async () => {
+    if (!activePlaylistId) {
+      setPlaylistTracks([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/playlists/${activePlaylistId}/tracks`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { tracks: LibraryTrack[] };
+      setPlaylistTracks(data.tracks);
+    } catch (err) {
+      console.warn("fetch playlist tracks failed:", err);
+    }
+  }, [activePlaylistId]);
 
   const rescan = useCallback(async () => {
     setScanning(true);
@@ -69,6 +111,7 @@ export function LibraryView() {
         },
       );
       await refresh();
+      await refreshPlaylistTracks();
     } catch (err) {
       toast.error("Scan failed", {
         description: err instanceof Error ? err.message : String(err),
@@ -76,7 +119,7 @@ export function LibraryView() {
     } finally {
       setScanning(false);
     }
-  }, [refresh]);
+  }, [refresh, refreshPlaylistTracks]);
 
   const refreshSaved = useCallback(async () => {
     if (!user) {
@@ -93,11 +136,23 @@ export function LibraryView() {
 
   useEffect(() => {
     refresh();
-  }, [refresh]);
+    refreshPlaylists();
+  }, [refresh, refreshPlaylists]);
 
   useEffect(() => {
     refreshSaved();
   }, [refreshSaved]);
+
+  useEffect(() => {
+    refreshPlaylistTracks();
+  }, [refreshPlaylistTracks]);
+
+  const activePlaylist = useMemo(
+    () => playlists.find((p) => p.id === activePlaylistId) ?? null,
+    [playlists, activePlaylistId],
+  );
+
+  const visibleTracks = activePlaylistId ? playlistTracks : tracks;
 
   const localKeys = useMemo(
     () => new Set(tracks.map((t) => matchKey(t))),
@@ -110,17 +165,18 @@ export function LibraryView() {
   );
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return tracks;
+    if (!search.trim()) return visibleTracks;
     const q = search.toLowerCase();
-    return tracks.filter(
+    return visibleTracks.filter(
       (t) =>
         t.title.toLowerCase().includes(q) ||
         (t.artist?.toLowerCase().includes(q) ?? false) ||
         (t.album?.toLowerCase().includes(q) ?? false),
     );
-  }, [tracks, search]);
+  }, [visibleTracks, search]);
 
   const filteredRemote = useMemo(() => {
+    if (activePlaylistId) return []; // hide cloud row inside a playlist view
     if (!search.trim()) return remoteOnly;
     const q = search.toLowerCase();
     return remoteOnly.filter(
@@ -129,19 +185,19 @@ export function LibraryView() {
         (t.artist?.toLowerCase().includes(q) ?? false) ||
         (t.album?.toLowerCase().includes(q) ?? false),
     );
-  }, [remoteOnly, search]);
+  }, [remoteOnly, search, activePlaylistId]);
 
   async function confirmDelete() {
     if (!toDelete) return;
     const target = toDelete;
     setToDelete(null);
     try {
-      const res = await fetch(`/api/library/${target.id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/library/${target.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setTracks((prev) => prev.filter((t) => t.id !== target.id));
+      setPlaylistTracks((prev) => prev.filter((t) => t.id !== target.id));
       if (playing?.id === target.id) setPlaying(null);
+      await refreshPlaylists();
       toast.success(`Deleted "${target.title}"`);
     } catch (err) {
       toast.error("Delete failed", {
@@ -150,20 +206,63 @@ export function LibraryView() {
     }
   }
 
+  async function confirmDeletePlaylist() {
+    if (!playlistToDelete) return;
+    const target = playlistToDelete;
+    setPlaylistToDelete(null);
+    try {
+      const res = await fetch(`/api/playlists/${target.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (activePlaylistId === target.id) setActivePlaylistId(null);
+      await refreshPlaylists();
+      toast.success(`Deleted playlist "${target.name}"`);
+    } catch (err) {
+      toast.error("Playlist delete failed", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function onPlaylistMutated() {
+    await refreshPlaylists();
+    await refreshPlaylistTracks();
+  }
+
   return (
-    <div className="space-y-6 pb-32">
+    <div className="space-y-5 pb-32">
+      <PlaylistBar
+        playlists={playlists}
+        activeId={activePlaylistId}
+        onSelect={setActivePlaylistId}
+        onNew={() => {
+          setPlaylistDialogTarget(null);
+          setPlaylistDialogOpen(true);
+        }}
+        onRename={(p) => {
+          setPlaylistDialogTarget(p);
+          setPlaylistDialogOpen(true);
+        }}
+        onDelete={(p) => setPlaylistToDelete(p)}
+      />
+
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[16rem]">
+        <div className="relative min-w-[16rem] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search library…"
+            placeholder={
+              activePlaylist
+                ? `Search in "${activePlaylist.name}"…`
+                : "Search library…"
+            }
             className="pl-9"
           />
         </div>
         <div className="text-sm text-muted-foreground">
-          {filtered.length} / {tracks.length}
+          {filtered.length} / {visibleTracks.length}
         </div>
         <Button
           variant="outline"
@@ -184,7 +283,7 @@ export function LibraryView() {
         <div className="flex items-center justify-center py-20 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
         </div>
-      ) : tracks.length === 0 && remoteOnly.length === 0 ? (
+      ) : visibleTracks.length === 0 && filteredRemote.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -192,11 +291,17 @@ export function LibraryView() {
         >
           <Music4 className="h-10 w-10 text-muted-foreground/50" />
           <div>
-            <p className="font-medium">Your library is empty</p>
+            <p className="font-medium">
+              {activePlaylist
+                ? `"${activePlaylist.name}" is empty`
+                : "Your library is empty"}
+            </p>
             <p className="text-sm text-muted-foreground">
-              {firebaseConfigured && !user
-                ? "Download a track, click Rescan, or sign in to pull from your other devices."
-                : "Download a track or click Rescan to detect existing files."}
+              {activePlaylist
+                ? 'Hover a track in "All" and click the list icon to add it here.'
+                : firebaseConfigured && !user
+                  ? "Download a track, click Rescan, or sign in to pull from your other devices."
+                  : "Download a track or click Rescan to detect existing files."}
             </p>
           </div>
         </motion.div>
@@ -211,9 +316,12 @@ export function LibraryView() {
                     track={t}
                     index={i}
                     isPlaying={playing?.id === t.id}
+                    playlists={playlists}
+                    activePlaylist={activePlaylist}
                     onPlay={() => setPlaying(t)}
                     onRename={() => setRenaming(t)}
                     onDelete={() => setToDelete(t)}
+                    onPlaylistMutated={onPlaylistMutated}
                   />
                 ))}
               </AnimatePresence>
@@ -256,27 +364,65 @@ export function LibraryView() {
       <RenameDialog
         track={renaming}
         onClose={() => setRenaming(null)}
-        onSaved={refresh}
+        onSaved={() => {
+          refresh();
+          refreshPlaylistTracks();
+        }}
+      />
+
+      <NewPlaylistDialog
+        open={playlistDialogOpen}
+        target={playlistDialogTarget}
+        onClose={() => {
+          setPlaylistDialogOpen(false);
+          setPlaylistDialogTarget(null);
+        }}
+        onSaved={async (created) => {
+          await refreshPlaylists();
+          if (created) setActivePlaylistId(created.id);
+        }}
       />
 
       <AlertDialog
         open={toDelete !== null}
-        onOpenChange={(next) => {
-          if (!next) setToDelete(null);
-        }}
+        onOpenChange={(next) => !next && setToDelete(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this track?</AlertDialogTitle>
             <AlertDialogDescription>
-              "{toDelete?.title}" will be permanently deleted from disk and removed
-              from the library. This can't be undone.
+              "{toDelete?.title}" will be permanently deleted from disk and
+              removed from the library and all playlists. This can't be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={playlistToDelete !== null}
+        onOpenChange={(next) => !next && setPlaylistToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this playlist?</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{playlistToDelete?.name}" will be removed. The tracks in it stay
+              on disk — only the playlist is deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeletePlaylist}
               className="bg-destructive text-white hover:bg-destructive/90"
             >
               Delete

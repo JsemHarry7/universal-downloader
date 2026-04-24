@@ -6,6 +6,7 @@ import { ensureFfmpeg, ffmpegVersion, ffmpegDirFor } from "./lib/ffmpeg";
 import { DEFAULT_DOWNLOAD_DIR, ensureDir } from "./lib/paths";
 import { downloadRoutes } from "./routes/download";
 import { libraryRoutes } from "./routes/library";
+import { playlistRoutes } from "./routes/playlists";
 import { getDb } from "./lib/db";
 import { scanDir } from "./lib/library";
 import { startDownloadDirWatcher } from "./lib/watcher";
@@ -37,6 +38,7 @@ app.route(
   ),
 );
 app.route("/api", libraryRoutes());
+app.route("/api", playlistRoutes());
 
 async function main() {
   ensureDir(DEFAULT_DOWNLOAD_DIR);

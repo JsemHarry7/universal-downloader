@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, RefreshCw, Music4, Loader2, Cloud } from "lucide-react";
+import {
+  Search,
+  RefreshCw,
+  Music4,
+  Loader2,
+  Cloud,
+  Play,
+  Shuffle,
+} from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -16,13 +24,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { LibraryTrack, SavedTrack, Playlist } from "@/lib/types";
 import { LibraryCard } from "./LibraryCard";
-import { MiniPlayer } from "./MiniPlayer";
 import { RenameDialog } from "./RenameDialog";
 import { SavedTrackCard } from "./SavedTrackCard";
 import { PlaylistBar } from "./PlaylistBar";
 import { NewPlaylistDialog } from "./NewPlaylistDialog";
 import { useAuth } from "@/features/auth/useAuth";
 import { fetchSavedTracks, matchKey } from "@/lib/sync";
+import { usePlayer } from "@/features/player/PlayerProvider";
 
 export function LibraryView() {
   const [tracks, setTracks] = useState<LibraryTrack[]>([]);
@@ -33,7 +41,6 @@ export function LibraryView() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [playing, setPlaying] = useState<LibraryTrack | null>(null);
   const [renaming, setRenaming] = useState<LibraryTrack | null>(null);
   const [toDelete, setToDelete] = useState<LibraryTrack | null>(null);
   const [playlistDialogTarget, setPlaylistDialogTarget] =
@@ -41,6 +48,7 @@ export function LibraryView() {
   const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false);
   const [playlistToDelete, setPlaylistToDelete] = useState<Playlist | null>(null);
   const { user, isConfigured: firebaseConfigured } = useAuth();
+  const { currentTrack: nowPlaying, dispatch: playerDispatch } = usePlayer();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -196,7 +204,9 @@ export function LibraryView() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setTracks((prev) => prev.filter((t) => t.id !== target.id));
       setPlaylistTracks((prev) => prev.filter((t) => t.id !== target.id));
-      if (playing?.id === target.id) setPlaying(null);
+      if (nowPlaying?.id === target.id) {
+        playerDispatch({ type: "STOP" });
+      }
       await refreshPlaylists();
       toast.success(`Deleted "${target.title}"`);
     } catch (err) {
@@ -204,6 +214,32 @@ export function LibraryView() {
         description: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  function playTrackInContext(track: LibraryTrack) {
+    const contextTracks = filtered.length > 0 ? filtered : [track];
+    const startIndex = Math.max(
+      0,
+      contextTracks.findIndex((t) => t.id === track.id),
+    );
+    playerDispatch({
+      type: "PLAY_QUEUE",
+      queue: contextTracks,
+      startIndex,
+    });
+  }
+
+  function playAll() {
+    if (filtered.length === 0) return;
+    playerDispatch({ type: "PLAY_QUEUE", queue: filtered, startIndex: 0 });
+  }
+
+  function shufflePlay() {
+    if (filtered.length === 0) return;
+    const startIndex = Math.floor(Math.random() * filtered.length);
+    playerDispatch({ type: "PLAY_QUEUE", queue: filtered, startIndex });
+    // ensure shuffle is on
+    setTimeout(() => playerDispatch({ type: "TOGGLE_SHUFFLE" }), 0);
   }
 
   async function confirmDeletePlaylist() {
@@ -264,6 +300,28 @@ export function LibraryView() {
         <div className="text-sm text-muted-foreground">
           {filtered.length} / {visibleTracks.length}
         </div>
+        {filtered.length > 0 && (
+          <>
+            <Button
+              variant="default"
+              onClick={playAll}
+              disabled={filtered.length === 0}
+              className="gap-2"
+              title="Play all visible"
+            >
+              <Play className="h-4 w-4" fill="currentColor" />
+              Play all
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={shufflePlay}
+              title="Shuffle play"
+            >
+              <Shuffle className="h-4 w-4" />
+            </Button>
+          </>
+        )}
         <Button
           variant="outline"
           onClick={rescan}
@@ -315,10 +373,10 @@ export function LibraryView() {
                     key={t.id}
                     track={t}
                     index={i}
-                    isPlaying={playing?.id === t.id}
+                    isPlaying={nowPlaying?.id === t.id}
                     playlists={playlists}
                     activePlaylist={activePlaylist}
-                    onPlay={() => setPlaying(t)}
+                    onPlay={() => playTrackInContext(t)}
                     onRename={() => setRenaming(t)}
                     onDelete={() => setToDelete(t)}
                     onPlaylistMutated={onPlaylistMutated}
@@ -354,12 +412,6 @@ export function LibraryView() {
           )}
         </div>
       )}
-
-      <AnimatePresence>
-        {playing && (
-          <MiniPlayer track={playing} onClose={() => setPlaying(null)} />
-        )}
-      </AnimatePresence>
 
       <RenameDialog
         track={renaming}

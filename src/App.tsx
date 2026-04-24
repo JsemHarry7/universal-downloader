@@ -11,6 +11,8 @@ import { BatchDialog } from "@/features/resolver/BatchDialog";
 import { useClipboardMonitor } from "@/features/resolver/useClipboardMonitor";
 import { LibraryView } from "@/features/library/LibraryView";
 import { AuthMenu } from "@/features/auth/AuthMenu";
+import { PlayerProvider } from "@/features/player/PlayerProvider";
+import { Player } from "@/features/player/Player";
 import { cn } from "@/lib/utils";
 import { detectSource } from "@/lib/detect-source";
 import type { ResolvedItem } from "@/lib/types";
@@ -54,7 +56,8 @@ export default function App() {
 
 
   return (
-    <TooltipProvider>
+    <PlayerProvider>
+      <TooltipProvider>
       <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
         <div className="pointer-events-none fixed inset-0 -z-10">
           <div className="absolute -top-40 -left-40 h-[28rem] w-[28rem] rounded-full bg-orange-500/10 blur-3xl" />
@@ -162,9 +165,11 @@ export default function App() {
           }}
         />
 
+        <Player />
         <Toaster richColors position="bottom-right" />
       </div>
-    </TooltipProvider>
+      </TooltipProvider>
+    </PlayerProvider>
   );
 }
 

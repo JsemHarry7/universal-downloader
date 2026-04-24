@@ -8,6 +8,7 @@ import { downloadRoutes } from "./routes/download";
 import { libraryRoutes } from "./routes/library";
 import { getDb } from "./lib/db";
 import { scanDir } from "./lib/library";
+import { startDownloadDirWatcher } from "./lib/watcher";
 
 const app = new Hono();
 
@@ -62,6 +63,8 @@ async function main() {
       ),
     )
     .catch((err) => console.warn("  library scan failed:", err.message));
+
+  startDownloadDirWatcher(DEFAULT_DOWNLOAD_DIR, getDb());
 }
 
 main().catch((err) => {

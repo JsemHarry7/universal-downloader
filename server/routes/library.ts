@@ -29,13 +29,25 @@ export function libraryRoutes() {
     const rows = db
       .prepare(
         `
-        SELECT id, path, title, artist, album, duration_s, file_size, format, has_artwork, added_at, source, source_url
-        FROM library
-        ORDER BY added_at DESC
+        SELECT l.id, l.path, l.title, l.artist, l.album, l.duration_s,
+               l.file_size, l.format, l.has_artwork, l.added_at,
+               l.source, l.source_url,
+               GROUP_CONCAT(tt.tag_id) AS tag_ids_csv
+        FROM library l
+        LEFT JOIN track_tags tt ON tt.track_id = l.id
+        GROUP BY l.id
+        ORDER BY l.added_at DESC
       `,
       )
-      .all();
-    return c.json({ tracks: rows });
+      .all() as Array<{ tag_ids_csv: string | null } & Record<string, unknown>>;
+    const tracks = rows.map((r) => {
+      const { tag_ids_csv, ...rest } = r;
+      return {
+        ...rest,
+        tag_ids: tag_ids_csv ? tag_ids_csv.split(",") : [],
+      };
+    });
+    return c.json({ tracks });
   });
 
   routes.get("/library/:id/artwork", (c) => {

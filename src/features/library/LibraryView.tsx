@@ -7,6 +7,7 @@ import {
   Cloud,
   Play,
   Shuffle,
+  X as XIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -22,12 +23,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { LibraryTrack, SavedTrack, Playlist } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import type {
+  LibraryTrack,
+  SavedTrack,
+  Playlist,
+  Tag,
+  LibraryStats,
+} from "@/lib/types";
 import { LibraryCard } from "./LibraryCard";
 import { RenameDialog } from "./RenameDialog";
 import { SavedTrackCard } from "./SavedTrackCard";
 import { PlaylistBar } from "./PlaylistBar";
 import { NewPlaylistDialog } from "./NewPlaylistDialog";
+import { TagEditor, tagClass } from "./TagEditor";
+import { StatsPanel } from "./StatsPanel";
 import { useAuth } from "@/features/auth/useAuth";
 import { fetchSavedTracks, matchKey } from "@/lib/sync";
 import { usePlayer } from "@/features/player/PlayerProvider";
@@ -36,12 +46,16 @@ export function LibraryView() {
   const [tracks, setTracks] = useState<LibraryTrack[]>([]);
   const [saved, setSaved] = useState<SavedTrack[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [stats, setStats] = useState<LibraryStats | null>(null);
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
+  const [activeTagId, setActiveTagId] = useState<string | null>(null);
   const [playlistTracks, setPlaylistTracks] = useState<LibraryTrack[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [renaming, setRenaming] = useState<LibraryTrack | null>(null);
+  const [taggingTrack, setTaggingTrack] = useState<LibraryTrack | null>(null);
   const [toDelete, setToDelete] = useState<LibraryTrack | null>(null);
   const [playlistDialogTarget, setPlaylistDialogTarget] =
     useState<Playlist | null>(null);
@@ -72,7 +86,6 @@ export function LibraryView() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { playlists: Playlist[] };
       setPlaylists(data.playlists);
-      // drop active if it was deleted
       if (
         activePlaylistId &&
         !data.playlists.some((p) => p.id === activePlaylistId)
@@ -83,6 +96,31 @@ export function LibraryView() {
       console.warn("fetch playlists failed:", err);
     }
   }, [activePlaylistId]);
+
+  const refreshTags = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tags");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { tags: Tag[] };
+      setTags(data.tags);
+      if (activeTagId && !data.tags.some((t) => t.id === activeTagId)) {
+        setActiveTagId(null);
+      }
+    } catch (err) {
+      console.warn("fetch tags failed:", err);
+    }
+  }, [activeTagId]);
+
+  const refreshStats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/stats");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as LibraryStats;
+      setStats(data);
+    } catch (err) {
+      console.warn("fetch stats failed:", err);
+    }
+  }, []);
 
   const refreshPlaylistTracks = useCallback(async () => {
     if (!activePlaylistId) {
@@ -120,6 +158,7 @@ export function LibraryView() {
       );
       await refresh();
       await refreshPlaylistTracks();
+      await refreshStats();
     } catch (err) {
       toast.error("Scan failed", {
         description: err instanceof Error ? err.message : String(err),
@@ -127,7 +166,7 @@ export function LibraryView() {
     } finally {
       setScanning(false);
     }
-  }, [refresh, refreshPlaylistTracks]);
+  }, [refresh, refreshPlaylistTracks, refreshStats]);
 
   const refreshSaved = useCallback(async () => {
     if (!user) {
@@ -145,7 +184,9 @@ export function LibraryView() {
   useEffect(() => {
     refresh();
     refreshPlaylists();
-  }, [refresh, refreshPlaylists]);
+    refreshTags();
+    refreshStats();
+  }, [refresh, refreshPlaylists, refreshTags, refreshStats]);
 
   useEffect(() => {
     refreshSaved();
@@ -160,7 +201,17 @@ export function LibraryView() {
     [playlists, activePlaylistId],
   );
 
+  const activeTag = useMemo(
+    () => tags.find((t) => t.id === activeTagId) ?? null,
+    [tags, activeTagId],
+  );
+
   const visibleTracks = activePlaylistId ? playlistTracks : tracks;
+
+  const afterTagFilter = useMemo(() => {
+    if (!activeTagId) return visibleTracks;
+    return visibleTracks.filter((t) => t.tag_ids.includes(activeTagId));
+  }, [visibleTracks, activeTagId]);
 
   const localKeys = useMemo(
     () => new Set(tracks.map((t) => matchKey(t))),
@@ -173,18 +224,18 @@ export function LibraryView() {
   );
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return visibleTracks;
+    if (!search.trim()) return afterTagFilter;
     const q = search.toLowerCase();
-    return visibleTracks.filter(
+    return afterTagFilter.filter(
       (t) =>
         t.title.toLowerCase().includes(q) ||
         (t.artist?.toLowerCase().includes(q) ?? false) ||
         (t.album?.toLowerCase().includes(q) ?? false),
     );
-  }, [visibleTracks, search]);
+  }, [afterTagFilter, search]);
 
   const filteredRemote = useMemo(() => {
-    if (activePlaylistId) return []; // hide cloud row inside a playlist view
+    if (activePlaylistId || activeTagId) return [];
     if (!search.trim()) return remoteOnly;
     const q = search.toLowerCase();
     return remoteOnly.filter(
@@ -193,7 +244,7 @@ export function LibraryView() {
         (t.artist?.toLowerCase().includes(q) ?? false) ||
         (t.album?.toLowerCase().includes(q) ?? false),
     );
-  }, [remoteOnly, search, activePlaylistId]);
+  }, [remoteOnly, search, activePlaylistId, activeTagId]);
 
   async function confirmDelete() {
     if (!toDelete) return;
@@ -208,38 +259,14 @@ export function LibraryView() {
         playerDispatch({ type: "STOP" });
       }
       await refreshPlaylists();
+      await refreshTags();
+      await refreshStats();
       toast.success(`Deleted "${target.title}"`);
     } catch (err) {
       toast.error("Delete failed", {
         description: err instanceof Error ? err.message : String(err),
       });
     }
-  }
-
-  function playTrackInContext(track: LibraryTrack) {
-    const contextTracks = filtered.length > 0 ? filtered : [track];
-    const startIndex = Math.max(
-      0,
-      contextTracks.findIndex((t) => t.id === track.id),
-    );
-    playerDispatch({
-      type: "PLAY_QUEUE",
-      queue: contextTracks,
-      startIndex,
-    });
-  }
-
-  function playAll() {
-    if (filtered.length === 0) return;
-    playerDispatch({ type: "PLAY_QUEUE", queue: filtered, startIndex: 0 });
-  }
-
-  function shufflePlay() {
-    if (filtered.length === 0) return;
-    const startIndex = Math.floor(Math.random() * filtered.length);
-    playerDispatch({ type: "PLAY_QUEUE", queue: filtered, startIndex });
-    // ensure shuffle is on
-    setTimeout(() => playerDispatch({ type: "TOGGLE_SHUFFLE" }), 0);
   }
 
   async function confirmDeletePlaylist() {
@@ -266,8 +293,41 @@ export function LibraryView() {
     await refreshPlaylistTracks();
   }
 
+  async function onTagMutated() {
+    await refresh();
+    await refreshPlaylistTracks();
+    await refreshTags();
+  }
+
+  function playTrackInContext(track: LibraryTrack) {
+    const contextTracks = filtered.length > 0 ? filtered : [track];
+    const startIndex = Math.max(
+      0,
+      contextTracks.findIndex((t) => t.id === track.id),
+    );
+    playerDispatch({
+      type: "PLAY_QUEUE",
+      queue: contextTracks,
+      startIndex,
+    });
+  }
+
+  function playAll() {
+    if (filtered.length === 0) return;
+    playerDispatch({ type: "PLAY_QUEUE", queue: filtered, startIndex: 0 });
+  }
+
+  function shufflePlay() {
+    if (filtered.length === 0) return;
+    const startIndex = Math.floor(Math.random() * filtered.length);
+    playerDispatch({ type: "PLAY_QUEUE", queue: filtered, startIndex });
+    setTimeout(() => playerDispatch({ type: "TOGGLE_SHUFFLE" }), 0);
+  }
+
   return (
     <div className="space-y-5 pb-32">
+      <StatsPanel stats={stats} />
+
       <PlaylistBar
         playlists={playlists}
         activeId={activePlaylistId}
@@ -283,6 +343,40 @@ export function LibraryView() {
         onDelete={(p) => setPlaylistToDelete(p)}
       />
 
+      {tags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">Tags:</span>
+          {tags.map((tag) => {
+            const active = activeTagId === tag.id;
+            return (
+              <button
+                key={tag.id}
+                onClick={() => setActiveTagId(active ? null : tag.id)}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-medium transition-all",
+                  active
+                    ? tagClass(tag.color)
+                    : "border-border/40 bg-card/30 text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {tag.name}
+                <span className="text-[10px] opacity-60">{tag.track_count}</span>
+              </button>
+            );
+          })}
+          {activeTagId && (
+            <button
+              onClick={() => setActiveTagId(null)}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-muted-foreground hover:text-foreground"
+              title="Clear tag filter"
+            >
+              <XIcon className="h-3 w-3" />
+              clear
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[16rem] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -292,7 +386,9 @@ export function LibraryView() {
             placeholder={
               activePlaylist
                 ? `Search in "${activePlaylist.name}"…`
-                : "Search library…"
+                : activeTag
+                  ? `Search #${activeTag.name}…`
+                  : "Search library…"
             }
             className="pl-9"
           />
@@ -305,7 +401,6 @@ export function LibraryView() {
             <Button
               variant="default"
               onClick={playAll}
-              disabled={filtered.length === 0}
               className="gap-2"
               title="Play all visible"
             >
@@ -376,9 +471,14 @@ export function LibraryView() {
                     isPlaying={nowPlaying?.id === t.id}
                     playlists={playlists}
                     activePlaylist={activePlaylist}
+                    tags={tags}
                     onPlay={() => playTrackInContext(t)}
                     onRename={() => setRenaming(t)}
                     onDelete={() => setToDelete(t)}
+                    onEditTags={() => setTaggingTrack(t)}
+                    onTagClick={(tagId) =>
+                      setActiveTagId(tagId === activeTagId ? null : tagId)
+                    }
                     onPlaylistMutated={onPlaylistMutated}
                   />
                 ))}
@@ -403,6 +503,7 @@ export function LibraryView() {
                       index={i}
                       onDownloaded={() => {
                         refresh();
+                        refreshStats();
                       }}
                     />
                   ))}
@@ -433,6 +534,13 @@ export function LibraryView() {
           await refreshPlaylists();
           if (created) setActivePlaylistId(created.id);
         }}
+      />
+
+      <TagEditor
+        track={taggingTrack}
+        tags={tags}
+        onClose={() => setTaggingTrack(null)}
+        onMutated={onTagMutated}
       />
 
       <AlertDialog

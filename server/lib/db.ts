@@ -52,5 +52,22 @@ function initSchema(db: Database.Database) {
       FOREIGN KEY (track_id) REFERENCES library(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_playlist_tracks_pos ON playlist_tracks(playlist_id, position);
+
+    CREATE TABLE IF NOT EXISTS tags (
+      id TEXT PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      color TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS track_tags (
+      track_id TEXT NOT NULL,
+      tag_id TEXT NOT NULL,
+      added_at INTEGER NOT NULL,
+      PRIMARY KEY (track_id, tag_id),
+      FOREIGN KEY (track_id) REFERENCES library(id) ON DELETE CASCADE,
+      FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_track_tags_tag ON track_tags(tag_id);
   `);
 }

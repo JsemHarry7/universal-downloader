@@ -48,13 +48,26 @@ export function playlistRoutes() {
     const rows = getDb()
       .prepare(
         `
-        SELECT id, path, title, artist, album, duration_s, file_size, format, has_artwork, added_at, source, source_url
-        FROM library WHERE id IN (${placeholders})
+        SELECT l.id, l.path, l.title, l.artist, l.album, l.duration_s,
+               l.file_size, l.format, l.has_artwork, l.added_at,
+               l.source, l.source_url,
+               GROUP_CONCAT(tt.tag_id) AS tag_ids_csv
+        FROM library l
+        LEFT JOIN track_tags tt ON tt.track_id = l.id
+        WHERE l.id IN (${placeholders})
+        GROUP BY l.id
         `,
       )
-      .all(...trackIds) as Array<{ id: string }>;
+      .all(...trackIds) as Array<
+      { id: string; tag_ids_csv: string | null } & Record<string, unknown>
+    >;
 
-    const byId = new Map(rows.map((r) => [r.id, r]));
+    const byId = new Map(
+      rows.map(({ tag_ids_csv, ...rest }) => [
+        rest.id,
+        { ...rest, tag_ids: tag_ids_csv ? tag_ids_csv.split(",") : [] },
+      ]),
+    );
     const ordered = trackIds.map((id) => byId.get(id)).filter(Boolean);
     return c.json({ tracks: ordered });
   });

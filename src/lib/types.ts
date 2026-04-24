@@ -34,6 +34,24 @@ export interface LibraryTrack {
   added_at: number;
   source: string | null;
   source_url: string | null;
+  tag_ids: string[];
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  color: string;
+  created_at: number;
+  track_count: number;
+}
+
+export interface LibraryStats {
+  total_tracks: number;
+  total_size_bytes: number;
+  total_duration_s: number;
+  by_source: Record<string, number>;
+  by_format: Record<string, number>;
+  top_artists: Array<{ artist: string; count: number }>;
 }
 
 export interface SavedTrack {

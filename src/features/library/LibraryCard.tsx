@@ -1,4 +1,4 @@
-import { Play, Pencil, Trash2, Music, ListPlus } from "lucide-react";
+import { Play, Pencil, Trash2, Music, ListPlus, Tag as TagIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { LibraryTrack, Playlist } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import type { LibraryTrack, Playlist, Tag } from "@/lib/types";
+import { tagClass } from "./TagEditor";
 
 interface LibraryCardProps {
   track: LibraryTrack;
@@ -18,9 +20,12 @@ interface LibraryCardProps {
   isPlaying: boolean;
   playlists: Playlist[];
   activePlaylist: Playlist | null;
+  tags: Tag[];
   onPlay: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onEditTags: () => void;
+  onTagClick: (tagId: string) => void;
   onPlaylistMutated: () => void;
 }
 
@@ -37,14 +42,20 @@ export function LibraryCard({
   isPlaying,
   playlists,
   activePlaylist,
+  tags,
   onPlay,
   onRename,
   onDelete,
+  onEditTags,
+  onTagClick,
   onPlaylistMutated,
 }: LibraryCardProps) {
   const artworkUrl = track.has_artwork
     ? `/api/library/${track.id}/artwork`
     : null;
+  const trackTags = track.tag_ids
+    .map((id) => tags.find((t) => t.id === id))
+    .filter((t): t is Tag => t !== undefined);
 
   async function addTo(playlist: Playlist) {
     try {
@@ -154,6 +165,11 @@ export function LibraryCard({
                   </DropdownMenuItem>
                 </>
               )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onEditTags}>
+                <TagIcon className="mr-2 h-4 w-4" />
+                Edit tags…
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -193,6 +209,30 @@ export function LibraryCard({
         <p className="truncate text-xs text-muted-foreground">
           {track.artist ?? "Unknown artist"}
         </p>
+        {trackTags.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {trackTags.slice(0, 3).map((tag) => (
+              <button
+                key={tag.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTagClick(tag.id);
+                }}
+                className={cn(
+                  "rounded border px-1.5 py-0.5 text-[10px] font-medium",
+                  tagClass(tag.color),
+                )}
+              >
+                {tag.name}
+              </button>
+            ))}
+            {trackTags.length > 3 && (
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                +{trackTags.length - 3}
+              </span>
+            )}
+          </div>
+        )}
         <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
           <span>{formatDuration(track.duration_s)}</span>
           <span className="uppercase">{track.format}</span>

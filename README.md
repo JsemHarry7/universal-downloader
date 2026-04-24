@@ -32,6 +32,22 @@ First boot auto-downloads `yt-dlp.exe` (~18 MB) into `./bin/`. Audio files defau
 - Search, delete (with confirmation), rename (updates tags + the file on disk)
 - Built-in mini-player using HTML5 audio with range-request streaming
 
+## Cross-device sync (optional)
+
+Sign in with Google to sync your "saved" list across devices. The cloud only stores **metadata** (title, artist, source URL) — audio files never leave your machine. When you sign in on a new device, your Library tab grows a "Saved on other devices" section with one-click "Download here" buttons.
+
+**Setup (5 min, one-time):**
+
+1. Go to [Firebase Console](https://console.firebase.google.com/) → **Add project**
+2. In the new project:
+   - **Authentication** → Sign-in method → enable **Google**
+   - **Firestore Database** → Create database (production mode)
+   - **Firestore → Rules** → paste the contents of `firestore.rules` from this repo → Publish
+3. **Project Settings → Your apps → Web app (`</>`)** → register → copy the config values
+4. Copy `.env.example` to `.env.local` and paste your `apiKey`, `authDomain`, `projectId`, `appId`
+
+Restart `npm run dev`. A **Sign in** button appears in the header. Without Firebase configured, the app works exactly as before — fully local, no sign-in UI shown.
+
 ## Stack
 
 - **Frontend**: Vite + React 19 + TypeScript + Tailwind v4 + shadcn/ui + motion

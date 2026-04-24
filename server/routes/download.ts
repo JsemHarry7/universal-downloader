@@ -3,7 +3,10 @@ import { resolveUrl } from "../lib/resolve";
 import { downloadUrl } from "../lib/downloads";
 import { DEFAULT_DOWNLOAD_DIR } from "../lib/paths";
 
-export function downloadRoutes(getYtdlpPath: () => string) {
+export function downloadRoutes(
+  getYtdlpPath: () => string,
+  getFfmpegDir: () => string,
+) {
   const routes = new Hono();
 
   routes.post("/resolve", async (c) => {
@@ -23,6 +26,7 @@ export function downloadRoutes(getYtdlpPath: () => string) {
       destDir?: string;
       title?: string;
       artist?: string;
+      album?: string;
     }>();
     if (!body.url) return c.json({ error: "url required" }, 400);
     try {
@@ -31,6 +35,8 @@ export function downloadRoutes(getYtdlpPath: () => string) {
         destDir: body.destDir ?? DEFAULT_DOWNLOAD_DIR,
         title: body.title,
         artist: body.artist,
+        album: body.album,
+        ffmpegDir: getFfmpegDir(),
       });
       return c.json(result);
     } catch (err) {

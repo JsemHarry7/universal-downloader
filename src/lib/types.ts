@@ -35,3 +35,14 @@ export interface LibraryTrack {
   source: string | null;
   source_url: string | null;
 }
+
+export interface SavedTrack {
+  id: string;
+  title: string;
+  artist: string | null;
+  album: string | null;
+  source: string | null;
+  source_url: string | null;
+  artwork_url: string | null;
+  saved_at?: unknown;
+}

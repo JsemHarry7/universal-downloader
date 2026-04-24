@@ -7,6 +7,7 @@ import { UrlInput } from "@/features/resolver/UrlInput";
 import { EmptyState } from "@/features/resolver/EmptyState";
 import { PreviewCard } from "@/features/resolver/PreviewCard";
 import { LibraryView } from "@/features/library/LibraryView";
+import { AuthMenu } from "@/features/auth/AuthMenu";
 import { cn } from "@/lib/utils";
 import type { ResolvedItem } from "@/lib/types";
 
@@ -45,7 +46,12 @@ export default function App() {
             />
           </nav>
 
-          <span className="text-xs text-muted-foreground">v0.1.0</span>
+          <div className="flex items-center gap-3">
+            <AuthMenu />
+            <span className="hidden text-xs text-muted-foreground sm:inline">
+              v0.1.0
+            </span>
+          </div>
         </header>
 
         <main

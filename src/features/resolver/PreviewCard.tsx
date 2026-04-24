@@ -12,6 +12,8 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/features/auth/useAuth";
+import { saveTrackCloud, syncKey } from "@/lib/sync";
 import type { ResolvedItem, TrackMeta } from "@/lib/types";
 
 const kindIcon = {
@@ -38,7 +40,7 @@ type Status =
   | { kind: "done"; downloaded: number };
 
 async function downloadOne(
-  body: { url: string; title?: string; artist?: string },
+  body: { url: string; title?: string; artist?: string; album?: string },
 ): Promise<string[]> {
   const res = await fetch("/api/download", {
     method: "POST",
@@ -56,6 +58,29 @@ async function downloadOne(
 export function PreviewCard({ item, onClear }: PreviewCardProps) {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const KindIcon = kindIcon[item.kind];
+  const { user } = useAuth();
+
+  async function syncOne(t: TrackMeta) {
+    if (!user) return;
+    try {
+      await saveTrackCloud(user.uid, {
+        id: syncKey({
+          source: item.source,
+          sourceId: t.id,
+          title: t.title,
+          artist: t.artist,
+        }),
+        title: t.title,
+        artist: t.artist || null,
+        album: item.kind === "album" ? item.title : null,
+        source: item.source,
+        source_url: t.source_url,
+        artwork_url: t.artwork_url ?? item.artwork_url ?? null,
+      });
+    } catch (err) {
+      console.warn("cloud sync failed:", err);
+    }
+  }
 
   async function handleDownload() {
     const pending = toast.loading(`Starting ${item.title}…`);
@@ -78,8 +103,10 @@ export function PreviewCard({ item, onClear }: PreviewCardProps) {
               url: query,
               title: t.title,
               artist: t.artist,
+              album: item.kind === "album" ? item.title : undefined,
             });
             outputs.push(...files);
+            await syncOne(t);
           } catch (err) {
             console.warn(`Skipping ${t.title}:`, err);
           }
@@ -93,6 +120,9 @@ export function PreviewCard({ item, onClear }: PreviewCardProps) {
         });
         const files = await downloadOne({ url: item.source_url });
         outputs.push(...files);
+        if (item.kind === "track" && item.tracks[0]) {
+          await syncOne(item.tracks[0]);
+        }
       }
       setStatus({ kind: "done", downloaded: outputs.length });
       toast.success(

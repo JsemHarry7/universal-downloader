@@ -1,15 +1,27 @@
-import { Play, Pencil, Trash2, Music } from "lucide-react";
+import { Play, Pencil, Trash2, Music, ListPlus } from "lucide-react";
 import { motion } from "motion/react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import type { LibraryTrack } from "@/lib/types";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { LibraryTrack, Playlist } from "@/lib/types";
 
 interface LibraryCardProps {
   track: LibraryTrack;
   index: number;
   isPlaying: boolean;
+  playlists: Playlist[];
+  activePlaylist: Playlist | null;
   onPlay: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onPlaylistMutated: () => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -23,13 +35,55 @@ export function LibraryCard({
   track,
   index,
   isPlaying,
+  playlists,
+  activePlaylist,
   onPlay,
   onRename,
   onDelete,
+  onPlaylistMutated,
 }: LibraryCardProps) {
   const artworkUrl = track.has_artwork
     ? `/api/library/${track.id}/artwork`
     : null;
+
+  async function addTo(playlist: Playlist) {
+    try {
+      const res = await fetch(`/api/playlists/${playlist.id}/tracks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackId: track.id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { ok: boolean };
+      if (data.ok) {
+        toast.success(`Added to "${playlist.name}"`);
+        onPlaylistMutated();
+      } else {
+        toast.info(`Already in "${playlist.name}"`);
+      }
+    } catch (err) {
+      toast.error("Couldn't add to playlist", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function removeFromActive() {
+    if (!activePlaylist) return;
+    try {
+      const res = await fetch(
+        `/api/playlists/${activePlaylist.id}/tracks/${track.id}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast.success(`Removed from "${activePlaylist.name}"`);
+      onPlaylistMutated();
+    } catch (err) {
+      toast.error("Couldn't remove", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
   return (
     <motion.div
@@ -53,7 +107,7 @@ export function LibraryCard({
           </div>
         )}
 
-        <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 max-sm:bg-black/40 max-sm:opacity-100">
           <Button
             size="icon"
             variant="secondary"
@@ -63,6 +117,46 @@ export function LibraryCard({
           >
             <Play className="h-4 w-4" fill="currentColor" />
           </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="icon"
+                variant="secondary"
+                className="h-10 w-10 rounded-full"
+                title="Add to playlist"
+              >
+                <ListPlus className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center">
+              <DropdownMenuLabel>Add to playlist</DropdownMenuLabel>
+              {playlists.length === 0 ? (
+                <DropdownMenuItem disabled>No playlists yet</DropdownMenuItem>
+              ) : (
+                playlists.map((p) => (
+                  <DropdownMenuItem key={p.id} onClick={() => addTo(p)}>
+                    {p.name}
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {p.track_count}
+                    </span>
+                  </DropdownMenuItem>
+                ))
+              )}
+              {activePlaylist && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={removeFromActive}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    Remove from "{activePlaylist.name}"
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             size="icon"
             variant="secondary"

@@ -9,6 +9,7 @@ import { libraryRoutes } from "./routes/library";
 import { playlistRoutes } from "./routes/playlists";
 import { tagRoutes } from "./routes/tags";
 import { statsRoutes } from "./routes/stats";
+import { lyricsRoutes } from "./routes/lyrics";
 import { getDb } from "./lib/db";
 import { scanDir } from "./lib/library";
 import { startDownloadDirWatcher } from "./lib/watcher";
@@ -43,6 +44,7 @@ app.route("/api", libraryRoutes());
 app.route("/api", playlistRoutes());
 app.route("/api", tagRoutes());
 app.route("/api", statsRoutes());
+app.route("/api", lyricsRoutes());
 
 async function main() {
   ensureDir(DEFAULT_DOWNLOAD_DIR);

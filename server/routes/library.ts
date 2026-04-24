@@ -131,5 +131,56 @@ export function libraryRoutes() {
     return c.json(result);
   });
 
+  routes.get("/library/duplicates", (c) => {
+    const db = getDb();
+    const rows = db
+      .prepare(
+        `SELECT id, path, title, artist, album, duration_s, file_size,
+                format, has_artwork, added_at, source, source_url
+         FROM library`,
+      )
+      .all() as Array<{
+      id: string;
+      path: string;
+      title: string;
+      artist: string | null;
+      album: string | null;
+      duration_s: number;
+      file_size: number;
+      format: string;
+      has_artwork: number;
+      added_at: number;
+      source: string | null;
+      source_url: string | null;
+    }>;
+
+    const normalize = (s: string) =>
+      s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const groups = new Map<string, typeof rows>();
+    for (const t of rows) {
+      if (!t.title) continue;
+      const key = `${normalize(t.title)}|${normalize(t.artist ?? "")}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(t);
+    }
+
+    const duplicates: Array<typeof rows> = [];
+    for (const tracks of groups.values()) {
+      if (tracks.length < 2) continue;
+      const sorted = [...tracks].sort(
+        (a, b) => a.duration_s - b.duration_s,
+      );
+      const median = sorted[Math.floor(sorted.length / 2)].duration_s;
+      const cluster = sorted.filter(
+        (t) => Math.abs(t.duration_s - median) <= 3,
+      );
+      if (cluster.length >= 2) {
+        duplicates.push(cluster.map((t) => ({ ...t, tag_ids: [] })));
+      }
+    }
+
+    return c.json({ groups: duplicates });
+  });
+
   return routes;
 }

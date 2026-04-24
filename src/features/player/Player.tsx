@@ -13,6 +13,7 @@ import {
   X,
   Music,
   ListOrdered,
+  Captions,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { usePlayer } from "./PlayerProvider";
 import { usePlayerShortcuts } from "./useKeyboardShortcuts";
 import { QueuePanel } from "./QueuePanel";
+import { LyricsPanel } from "./LyricsPanel";
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return "0:00";
@@ -66,6 +68,7 @@ export function Player() {
   const [scrubbing, setScrubbing] = useState(false);
   const [scrubValue, setScrubValue] = useState(0);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [lyricsOpen, setLyricsOpen] = useState(false);
 
   usePlayerShortcuts();
 
@@ -219,6 +222,19 @@ export function Player() {
               <Button
                 variant="ghost"
                 size="icon"
+                onClick={() => setLyricsOpen(true)}
+                className={cn(
+                  "h-8 w-8 shrink-0",
+                  lyricsOpen && "bg-accent text-foreground",
+                )}
+                title="Lyrics"
+              >
+                <Captions className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => setQueueOpen(true)}
                 className={cn(
                   "h-8 w-8 shrink-0",
@@ -241,6 +257,7 @@ export function Player() {
             </div>
           </div>
           <QueuePanel open={queueOpen} onClose={() => setQueueOpen(false)} />
+          <LyricsPanel open={lyricsOpen} onClose={() => setLyricsOpen(false)} />
         </motion.div>
       )}
     </AnimatePresence>

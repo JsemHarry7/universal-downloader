@@ -12,6 +12,7 @@ import {
   ArrowUpDown,
   User,
   Check,
+  CopyCheck,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -50,6 +51,7 @@ import { NewPlaylistDialog } from "./NewPlaylistDialog";
 import { TagEditor, tagClass } from "./TagEditor";
 import { StatsPanel } from "./StatsPanel";
 import { AddSongsDialog } from "./AddSongsDialog";
+import { DuplicatesDialog } from "./DuplicatesDialog";
 import { useAuth } from "@/features/auth/useAuth";
 import { fetchSavedTracks, matchKey } from "@/lib/sync";
 import { usePlayer } from "@/features/player/PlayerProvider";
@@ -74,6 +76,7 @@ export function LibraryView() {
   const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false);
   const [playlistToDelete, setPlaylistToDelete] = useState<Playlist | null>(null);
   const [addSongsFor, setAddSongsFor] = useState<Playlist | null>(null);
+  const [dupesOpen, setDupesOpen] = useState(false);
   const [artistFilter, setArtistFilter] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<"added" | "title" | "artist" | "duration">("added");
   const { user, isConfigured: firebaseConfigured } = useAuth();
@@ -547,6 +550,15 @@ export function LibraryView() {
         </DropdownMenu>
         <Button
           variant="outline"
+          onClick={() => setDupesOpen(true)}
+          className="gap-2"
+          title="Find duplicate tracks"
+        >
+          <CopyCheck className="h-4 w-4" />
+          <span className="hidden sm:inline">Duplicates</span>
+        </Button>
+        <Button
+          variant="outline"
           onClick={rescan}
           disabled={scanning}
           className="gap-2"
@@ -731,6 +743,16 @@ export function LibraryView() {
         onClose={() => setAddSongsFor(null)}
         onAdded={async () => {
           await refreshPlaylists();
+          await refreshPlaylistTracks();
+        }}
+      />
+
+      <DuplicatesDialog
+        open={dupesOpen}
+        onClose={() => setDupesOpen(false)}
+        onMutated={async () => {
+          await refresh();
+          await refreshStats();
           await refreshPlaylistTracks();
         }}
       />

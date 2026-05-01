@@ -39,16 +39,24 @@ app.get("/api/health", (c) =>
 );
 
 app.get("/api/tools", async (c) => {
-  const ytdlp = ytdlpPath
-    ? await ytdlpStatus(ytdlpPath)
-    : null;
+  let ytdlp = null;
+  let ytdlpError: string | undefined;
+
+  if (ytdlpPath) {
+    try {
+      ytdlp = await ytdlpStatus(ytdlpPath);
+    } catch (err) {
+      ytdlpError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
   const ffmpeg = {
     path: ffmpegPath,
     version: ffmpegVer,
     available: Boolean(ffmpegPath),
   };
 
-  return c.json({ ytdlp, ffmpeg });
+  return c.json({ ytdlp, ytdlpError, ffmpeg });
 });
 
 app.post("/api/tools/ytdlp/update", async (c) => {

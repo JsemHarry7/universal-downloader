@@ -146,7 +146,14 @@ export function LibraryCard({
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2, delay: Math.min(index * 0.01, 0.15) }}
       onClick={selectMode ? onToggleSelect : undefined}
-      onDoubleClick={selectMode ? undefined : onPlay}
+      onDoubleClick={
+        selectMode
+          ? undefined
+          : (e) => {
+              if ((e.target as HTMLElement).closest("button, a")) return;
+              onPlay();
+            }
+      }
       className={cn(
         "group relative flex items-center gap-3 px-3 py-2 transition-colors hover:bg-card/60",
         selectMode && "cursor-pointer select-none",
@@ -292,7 +299,14 @@ export function LibraryCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: Math.min(index * 0.02, 0.3) }}
       onClick={selectMode ? onToggleSelect : undefined}
-      onDoubleClick={selectMode ? undefined : onPlay}
+      onDoubleClick={
+        selectMode
+          ? undefined
+          : (e) => {
+              if ((e.target as HTMLElement).closest("button, a")) return;
+              onPlay();
+            }
+      }
       className={cn(
         "group relative overflow-hidden rounded-lg border border-border/40 bg-card/40 backdrop-blur-sm transition-all hover:border-border hover:bg-card/60 hover:shadow-lg",
         selectMode && "cursor-pointer select-none",

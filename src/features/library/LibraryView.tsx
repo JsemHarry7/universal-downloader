@@ -17,12 +17,16 @@ import {
   CloudDownload,
   CheckSquare,
   Trash2,
+  LayoutGrid,
+  List as ListIcon,
+  MoreHorizontal,
 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { motion, AnimatePresence } from "motion/react";
@@ -94,6 +98,12 @@ export function LibraryView() {
   const [dupesOpen, setDupesOpen] = useState(false);
   const [artistFilter, setArtistFilter] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<"added" | "title" | "artist" | "duration">("added");
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
+    if (typeof window === "undefined") return "grid";
+    return window.localStorage.getItem("library-view-mode") === "list"
+      ? "list"
+      : "grid";
+  });
   const [cloudPlaylists, setCloudPlaylists] = useState<CloudPlaylist[]>([]);
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
@@ -231,6 +241,12 @@ export function LibraryView() {
     refreshTags();
     refreshStats();
   }, [refresh, refreshPlaylists, refreshTags, refreshStats]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("library-view-mode", viewMode);
+    }
+  }, [viewMode]);
 
   useCloudSync({
     user,
@@ -764,9 +780,14 @@ export function LibraryView() {
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="gap-2" title="Sort library">
+            <Button variant="outline" className="gap-2" title="Sort & view">
               <ArrowUpDown className="h-4 w-4" />
               <span className="hidden sm:inline">{SORT_LABELS[sortKey]}</span>
+              {viewMode === "list" ? (
+                <ListIcon className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <LayoutGrid className="h-4 w-4 text-muted-foreground" />
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -781,41 +802,55 @@ export function LibraryView() {
                 </DropdownMenuItem>
               ),
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>View as</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => setViewMode("grid")}>
+              {viewMode === "grid" ? (
+                <Check className="mr-2 h-4 w-4" />
+              ) : (
+                <LayoutGrid className="mr-2 h-4 w-4" />
+              )}
+              Grid
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setViewMode("list")}>
+              {viewMode === "list" ? (
+                <Check className="mr-2 h-4 w-4" />
+              ) : (
+                <ListIcon className="mr-2 h-4 w-4" />
+              )}
+              List
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button
           variant={selectMode ? "default" : "outline"}
+          size="icon"
           onClick={selectMode ? exitSelectMode : enterSelectMode}
-          className="gap-2"
           title={selectMode ? "Exit select mode" : "Select multiple tracks"}
         >
           <CheckSquare className="h-4 w-4" />
-          <span className="hidden sm:inline">
-            {selectMode ? "Done" : "Select"}
-          </span>
         </Button>
-        <Button
-          variant="outline"
-          onClick={() => setDupesOpen(true)}
-          className="gap-2"
-          title="Find duplicate tracks"
-        >
-          <CopyCheck className="h-4 w-4" />
-          <span className="hidden sm:inline">Duplicates</span>
-        </Button>
-        <Button
-          variant="outline"
-          onClick={rescan}
-          disabled={scanning}
-          className="gap-2"
-        >
-          {scanning ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          {scanning ? "Scanning…" : "Rescan"}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon" title="More actions">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setDupesOpen(true)}>
+              <CopyCheck className="mr-2 h-4 w-4" />
+              Find duplicates
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={rescan} disabled={scanning}>
+              {scanning ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              {scanning ? "Scanning…" : "Rescan files"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {selectMode && (
@@ -929,7 +964,13 @@ export function LibraryView() {
       ) : (
         <div className="space-y-8">
           {filtered.length > 0 && (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <div
+              className={cn(
+                viewMode === "grid"
+                  ? "grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+                  : "flex flex-col divide-y divide-border/30 overflow-hidden rounded-lg border border-border/40 bg-card/30",
+              )}
+            >
               <AnimatePresence mode="popLayout">
                 {filtered.map((t, i) => {
                   const pIdx = activePlaylistId
@@ -940,6 +981,7 @@ export function LibraryView() {
                       key={t.id}
                       track={t}
                       index={i}
+                      compact={viewMode === "list"}
                       isPlaying={nowPlaying?.id === t.id}
                       playlists={playlists}
                       activePlaylist={activePlaylist}
@@ -1014,13 +1056,20 @@ export function LibraryView() {
                   Download all {filteredRemote.length}
                 </Button>
               </div>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              <div
+                className={cn(
+                  viewMode === "grid"
+                    ? "grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+                    : "flex flex-col divide-y divide-border/30 overflow-hidden rounded-lg border border-dashed border-border/40 bg-card/20",
+                )}
+              >
                 <AnimatePresence mode="popLayout">
                   {filteredRemote.map((s, i) => (
                     <SavedTrackCard
                       key={s.id}
                       track={s}
                       index={i}
+                      compact={viewMode === "list"}
                       onDownloaded={() => {
                         refresh();
                         refreshStats();

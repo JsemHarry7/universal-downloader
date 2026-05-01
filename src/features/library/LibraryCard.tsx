@@ -38,6 +38,7 @@ interface LibraryCardProps {
   playlists: Playlist[];
   activePlaylist: Playlist | null;
   tags: Tag[];
+  compact?: boolean;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
   selectMode?: boolean;
@@ -72,6 +73,7 @@ export function LibraryCard({
   playlists,
   activePlaylist,
   tags,
+  compact = false,
   canMoveUp,
   canMoveDown,
   selectMode = false,
@@ -137,6 +139,152 @@ export function LibraryCard({
     }
   }
 
+  const rowContent = (
+    <motion.div
+      layout
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2, delay: Math.min(index * 0.01, 0.15) }}
+      onClick={selectMode ? onToggleSelect : undefined}
+      onDoubleClick={selectMode ? undefined : onPlay}
+      className={cn(
+        "group relative flex items-center gap-3 px-3 py-2 transition-colors hover:bg-card/60",
+        selectMode && "cursor-pointer select-none",
+        selected && "bg-primary/10",
+        isPlaying && !selected && "bg-primary/5",
+      )}
+    >
+      <div className="flex w-6 shrink-0 items-center justify-center text-xs tabular-nums text-muted-foreground">
+        {selectMode ? (
+          <div
+            className={cn(
+              "flex h-4 w-4 items-center justify-center rounded border transition-colors",
+              selected
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-muted-foreground/40",
+            )}
+          >
+            {selected && <Check className="h-3 w-3" />}
+          </div>
+        ) : isPlaying ? (
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/70 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+          </span>
+        ) : (
+          <>
+            <span className="group-hover:hidden">{index + 1}</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onPlay();
+              }}
+              className="hidden text-foreground group-hover:inline-flex"
+              title="Play"
+            >
+              <Play className="h-3.5 w-3.5" fill="currentColor" />
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
+        {artworkUrl ? (
+          <img
+            src={artworkUrl}
+            alt={track.title}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted-foreground/10">
+            <Music className="h-4 w-4 text-muted-foreground/50" />
+          </div>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div
+          className={cn(
+            "truncate text-sm font-medium",
+            isPlaying && "text-primary",
+          )}
+        >
+          {track.title}
+        </div>
+        {track.artist ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onArtistClick();
+            }}
+            className="block max-w-full truncate text-left text-xs text-muted-foreground transition-colors hover:text-foreground hover:underline"
+            title={`Filter to ${track.artist}`}
+          >
+            {track.artist}
+          </button>
+        ) : (
+          <div className="truncate text-xs text-muted-foreground">
+            Unknown artist
+          </div>
+        )}
+      </div>
+
+      {track.album && (
+        <div
+          className="hidden min-w-0 flex-1 truncate text-sm text-muted-foreground md:block"
+          title={track.album}
+        >
+          {track.album}
+        </div>
+      )}
+
+      {trackTags.length > 0 && (
+        <div className="hidden items-center gap-1 lg:flex">
+          {trackTags.slice(0, 2).map((tag) => (
+            <button
+              key={tag.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                onTagClick(tag.id);
+              }}
+              className={cn(
+                "rounded border px-1.5 py-0.5 text-[10px] font-medium",
+                tagClass(tag.color),
+              )}
+            >
+              {tag.name}
+            </button>
+          ))}
+          {trackTags.length > 2 && (
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              +{trackTags.length - 2}
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+        {formatDuration(track.duration_s)}
+      </div>
+
+      {!selectMode && (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7 shrink-0 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100 max-sm:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          title="Delete"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      )}
+    </motion.div>
+  );
+
   const cardContent = (
     <motion.div
       layout
@@ -144,6 +292,7 @@ export function LibraryCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: Math.min(index * 0.02, 0.3) }}
       onClick={selectMode ? onToggleSelect : undefined}
+      onDoubleClick={selectMode ? undefined : onPlay}
       className={cn(
         "group relative overflow-hidden rounded-lg border border-border/40 bg-card/40 backdrop-blur-sm transition-all hover:border-border hover:bg-card/60 hover:shadow-lg",
         selectMode && "cursor-pointer select-none",
@@ -274,11 +423,13 @@ export function LibraryCard({
         </motion.div>
   );
 
-  if (selectMode) return cardContent;
+  const body = compact ? rowContent : cardContent;
+
+  if (selectMode) return body;
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>{cardContent}</ContextMenuTrigger>
+      <ContextMenuTrigger asChild>{body}</ContextMenuTrigger>
 
       <ContextMenuContent className="w-56">
         <ContextMenuItem onClick={onPlay}>

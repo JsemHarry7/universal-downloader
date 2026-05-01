@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import readline from "node:readline";
+import fs from "node:fs";
 import NodeID3 from "node-id3";
 import { ensureDir } from "./paths";
 import { getDb } from "./db";
@@ -40,6 +41,8 @@ function safeFilenameComponent(s: string): string {
 const PROGRESS_RE =
   /\[download\]\s+(\d+(?:\.\d+)?)%\s+of\s+~?\s*([\d.]+\s*\w+)(?:\s+at\s+(\S+))?(?:\s+ETA\s+(\S+))?/;
 const STAGE_RE = /^\[([A-Za-z][\w:]*)\]/;
+const MP3_DESTINATION_RE = /^\[(?:download|ExtractAudio|VideoConvertor)\]\s+Destination:\s+(.+\.mp3)$/i;
+const MERGED_MP3_RE = /^\[Merger\]\s+Merging formats into\s+"(.+\.mp3)"$/i;
 
 export async function downloadUrlStream(
   ytdlpPath: string,
@@ -80,6 +83,18 @@ export async function downloadUrlStream(
   args.push(opts.url);
 
   const outputFiles: string[] = [];
+  const candidateOutputFiles = new Set<string>();
+  const recentOutput: string[] = [];
+
+  const rememberOutput = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    recentOutput.push(trimmed);
+    if (recentOutput.length > 12) recentOutput.shift();
+  };
+
+  const errorContext = () =>
+    recentOutput.length > 0 ? `: ${recentOutput.join(" | ")}` : "";
 
   await new Promise<void>((resolve, reject) => {
     const proc = spawn(ytdlpPath, args, {
@@ -94,9 +109,18 @@ export async function downloadUrlStream(
     let lastReportedStage = "";
 
     const handleLine = (line: string) => {
+      rememberOutput(line);
+
       if (line.startsWith("UDL_DONE:")) {
-        outputFiles.push(line.slice("UDL_DONE:".length).trim());
+        const file = line.slice("UDL_DONE:".length).trim();
+        if (file && file !== "NA") outputFiles.push(file);
         return;
+      }
+
+      const mp3DestinationMatch =
+        line.match(MP3_DESTINATION_RE) ?? line.match(MERGED_MP3_RE);
+      if (mp3DestinationMatch) {
+        candidateOutputFiles.add(mp3DestinationMatch[1]);
       }
 
       const progressMatch = line.match(PROGRESS_RE);
@@ -135,12 +159,30 @@ export async function downloadUrlStream(
     proc.on("error", reject);
     proc.on("close", (code) => {
       if (code !== 0) {
-        reject(new Error(`yt-dlp exited with code ${code}`));
+        reject(new Error(`yt-dlp exited with code ${code}${errorContext()}`));
         return;
       }
       resolve();
     });
   });
+
+  const existingOutputFiles = outputFiles.filter((file) => fs.existsSync(file));
+  if (existingOutputFiles.length > 0) {
+    outputFiles.splice(0, outputFiles.length, ...new Set(existingOutputFiles));
+  } else {
+    const existingCandidates = [...candidateOutputFiles].filter((file) =>
+      fs.existsSync(file),
+    );
+    if (existingCandidates.length > 0) {
+      outputFiles.push(...existingCandidates);
+    }
+  }
+
+  if (outputFiles.length === 0) {
+    throw new Error(
+      `yt-dlp finished but did not report an output file${errorContext()}`,
+    );
+  }
 
   if (opts.title || opts.artist || opts.album) {
     for (const file of outputFiles) {

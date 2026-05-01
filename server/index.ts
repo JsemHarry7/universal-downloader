@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { logger } from "hono/logger";
-import { ensureYtdlp, ytdlpVersion } from "./lib/ytdlp";
+import {
+  ensureYtdlp,
+  updateYtdlp,
+  ytdlpStatus,
+  ytdlpVersion,
+} from "./lib/ytdlp";
 import { ensureFfmpeg, ffmpegVersion, ffmpegDirFor } from "./lib/ffmpeg";
 import { DEFAULT_DOWNLOAD_DIR, ensureDir } from "./lib/paths";
 import { downloadRoutes } from "./routes/download";
@@ -32,6 +37,33 @@ app.get("/api/health", (c) =>
     download_dir: DEFAULT_DOWNLOAD_DIR,
   }),
 );
+
+app.get("/api/tools", async (c) => {
+  const ytdlp = ytdlpPath
+    ? await ytdlpStatus(ytdlpPath)
+    : null;
+  const ffmpeg = {
+    path: ffmpegPath,
+    version: ffmpegVer,
+    available: Boolean(ffmpegPath),
+  };
+
+  return c.json({ ytdlp, ffmpeg });
+});
+
+app.post("/api/tools/ytdlp/update", async (c) => {
+  try {
+    const status = await updateYtdlp();
+    ytdlpPath = status.path;
+    ytdlpVer = status.version;
+    return c.json({ ytdlp: status });
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      500,
+    );
+  }
+});
 
 app.route(
   "/api",

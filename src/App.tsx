@@ -1,9 +1,17 @@
-import { useState } from "react";
-import { Headphones, Download, Library } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  Headphones,
+  Download,
+  Library,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { Button } from "@/components/ui/button";
 import { UrlInput } from "@/features/resolver/UrlInput";
 import { EmptyState } from "@/features/resolver/EmptyState";
 import { PreviewCard } from "@/features/resolver/PreviewCard";
@@ -21,12 +29,75 @@ import type { ResolvedItem } from "@/lib/types";
 
 type View = "download" | "library";
 
+interface ToolStatus {
+  ytdlp: {
+    path: string;
+    version: string;
+    managed: boolean;
+    stale: boolean;
+    ageDays: number | null;
+    staleAfterDays: number;
+  } | null;
+  ffmpeg: {
+    path: string;
+    version: string;
+    available: boolean;
+  };
+}
+
 export default function App() {
   const [view, setView] = useState<View>("download");
   const [resolved, setResolved] = useState<ResolvedItem | null>(null);
   const [prefillUrl, setPrefillUrl] = useState<string | undefined>(undefined);
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchUrls, setBatchUrls] = useState<string[] | undefined>(undefined);
+  const [toolStatus, setToolStatus] = useState<ToolStatus | null>(null);
+  const [toolWarningDismissed, setToolWarningDismissed] = useState(false);
+  const [updatingYtdlp, setUpdatingYtdlp] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/tools")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: ToolStatus | null) => {
+        if (!cancelled && data) setToolStatus(data);
+      })
+      .catch(() => {
+        // Tool status is advisory; downloads still surface concrete errors.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function updateYtdlp() {
+    setUpdatingYtdlp(true);
+    const pending = toast.loading("Updating yt-dlp...");
+    try {
+      const res = await fetch("/api/tools/ytdlp/update", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error ?? `HTTP ${res.status}`);
+      }
+      setToolStatus((prev) =>
+        prev
+          ? { ...prev, ytdlp: data.ytdlp }
+          : {
+              ytdlp: data.ytdlp,
+              ffmpeg: { path: "", version: "", available: false },
+            },
+      );
+      setToolWarningDismissed(false);
+      toast.success(`yt-dlp updated to ${data.ytdlp.version}`, { id: pending });
+    } catch (err) {
+      toast.error("yt-dlp update failed", {
+        id: pending,
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setUpdatingYtdlp(false);
+    }
+  }
 
   useClipboardMonitor({
     onSingleUrl: (url) => {
@@ -98,6 +169,47 @@ export default function App() {
             </span>
           </div>
         </header>
+
+        {toolStatus?.ytdlp?.stale && !toolWarningDismissed && (
+          <div className="border-b border-amber-500/30 bg-amber-500/10 px-6 py-3">
+            <div className="mx-auto flex max-w-7xl items-center gap-3 text-sm text-amber-950 dark:text-amber-100">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+              <div className="min-w-0 flex-1">
+                <span className="font-medium">yt-dlp is stale.</span>{" "}
+                <span className="text-amber-950/80 dark:text-amber-100/80">
+                  Version {toolStatus.ytdlp.version}
+                  {toolStatus.ytdlp.ageDays !== null
+                    ? ` is ${toolStatus.ytdlp.ageDays} days old`
+                    : ""}{" "}
+                  and YouTube downloads may fail with 403 errors.
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={updateYtdlp}
+                disabled={updatingYtdlp}
+                className="h-8 shrink-0 gap-2"
+              >
+                {updatingYtdlp ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                Update
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setToolWarningDismissed(true)}
+                className="h-8 w-8 shrink-0 text-amber-950 hover:text-amber-900 dark:text-amber-100 dark:hover:text-amber-50"
+                title="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         <main
           className={cn(

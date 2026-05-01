@@ -42,7 +42,11 @@ export function SavedTrackCard({
         },
         (ev) => {
           if (typeof ev.percent === "number") {
-            setStatus({ kind: "downloading", percent: ev.percent });
+            setStatus((prev) =>
+              prev.kind === "downloading"
+                ? { ...prev, percent: ev.percent }
+                : prev,
+            );
           } else if (ev.stage) {
             setStatus((prev) =>
               prev.kind === "downloading"

@@ -3,11 +3,13 @@ import { Cloud, Download, Loader2, Music } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { SavedTrack } from "@/lib/types";
 
 interface SavedTrackCardProps {
   track: SavedTrack;
   index: number;
+  compact?: boolean;
   onDownloaded: () => void;
 }
 
@@ -20,6 +22,7 @@ type Status =
 export function SavedTrackCard({
   track,
   index,
+  compact = false,
   onDownloaded,
 }: SavedTrackCardProps) {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -92,6 +95,87 @@ export function SavedTrackCard({
         description: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  if (compact) {
+    return (
+      <motion.div
+        layout
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.85 }}
+        whileHover={{ opacity: 1 }}
+        transition={{ duration: 0.2, delay: Math.min(index * 0.01, 0.15) }}
+        className="group relative flex items-center gap-3 px-3 py-2 transition-colors hover:bg-card/60"
+      >
+        <div className="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
+          {track.artwork_url ? (
+            <img
+              src={track.artwork_url}
+              alt={track.title}
+              className="h-full w-full object-cover grayscale transition-all group-hover:grayscale-0"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted-foreground/10">
+              <Music className="h-4 w-4 text-muted-foreground/40" />
+            </div>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium">{track.title}</span>
+            <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              <Cloud className="h-2.5 w-2.5" />
+              Saved
+            </span>
+          </div>
+          <p className="truncate text-xs text-muted-foreground">
+            {track.artist ?? "Unknown artist"}
+          </p>
+        </div>
+
+        {status.kind === "downloading" && (
+          <div className="hidden w-32 shrink-0 sm:block">
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span className="truncate">{status.stage ?? "downloading"}</span>
+              <span className="shrink-0 tabular-nums">
+                {Math.round(status.percent)}%
+              </span>
+            </div>
+            <div className="h-1 overflow-hidden rounded-full bg-muted">
+              <motion.div
+                className="h-full bg-primary"
+                animate={{ width: `${status.percent}%` }}
+                transition={{ duration: 0.2 }}
+              />
+            </div>
+          </div>
+        )}
+
+        <Button
+          size="sm"
+          variant="outline"
+          className={cn("shrink-0 gap-1.5", status.kind === "done" && "opacity-60")}
+          onClick={handleDownload}
+          disabled={status.kind === "downloading" || status.kind === "done"}
+        >
+          {status.kind === "downloading" ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Download className="h-3 w-3" />
+          )}
+          <span className="hidden sm:inline">
+            {status.kind === "downloading"
+              ? "Downloading…"
+              : status.kind === "done"
+                ? "Downloaded"
+                : "Download"}
+          </span>
+        </Button>
+      </motion.div>
+    );
   }
 
   return (

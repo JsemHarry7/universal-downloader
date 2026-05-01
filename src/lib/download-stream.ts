@@ -71,6 +71,7 @@ export async function streamDownload(
       handleLine(line);
     }
   }
+  buffer += decoder.decode();
   if (buffer.trim()) handleLine(buffer);
 
   if (error) throw error;

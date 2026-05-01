@@ -203,6 +203,7 @@ export default function App() {
                 variant="ghost"
                 onClick={() => setToolWarningDismissed(true)}
                 className="h-8 w-8 shrink-0 text-amber-950 hover:text-amber-900 dark:text-amber-100 dark:hover:text-amber-50"
+                aria-label="Dismiss"
                 title="Dismiss"
               >
                 <X className="h-4 w-4" />

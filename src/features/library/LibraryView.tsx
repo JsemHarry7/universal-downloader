@@ -443,10 +443,18 @@ export function LibraryView() {
       }
     }
     setBulkDownloading(false);
-    toast.success(`Downloaded ${ok} of ${tracks.length}`, {
-      id: pending,
-      description: fail > 0 ? `${fail} failed` : undefined,
-    });
+    if (ok > 0) {
+      toast.success(`Downloaded ${ok} of ${tracks.length}`, {
+        id: pending,
+        description: fail > 0 ? `${fail} failed` : undefined,
+      });
+    } else {
+      toast.error("Download failed", {
+        id: pending,
+        description:
+          fail > 0 ? `${fail} of ${tracks.length} failed` : undefined,
+      });
+    }
     await refresh();
     await refreshStats();
     await refreshPlaylistTracks();

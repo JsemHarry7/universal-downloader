@@ -34,6 +34,32 @@ export async function streamDownload(
   const outputFiles: string[] = [];
   const libraryIds: string[] = [];
   let error: Error | null = null;
+  let sawDone = false;
+
+  const handleLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    try {
+      const event = JSON.parse(trimmed) as
+        | { type: "progress"; percent: number }
+        | { type: "stage"; name: string }
+        | { type: "done"; outputFiles: string[]; libraryIds?: string[] }
+        | { type: "error"; message: string };
+      if (event.type === "progress") {
+        onProgress?.({ percent: event.percent });
+      } else if (event.type === "stage") {
+        onProgress?.({ stage: event.name });
+      } else if (event.type === "done") {
+        sawDone = true;
+        outputFiles.push(...event.outputFiles);
+        libraryIds.push(...(event.libraryIds ?? []));
+      } else if (event.type === "error") {
+        error = new Error(event.message);
+      }
+    } catch {
+      // non-JSON, ignore
+    }
+  };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -42,30 +68,15 @@ export async function streamDownload(
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        const event = JSON.parse(trimmed) as
-          | { type: "progress"; percent: number }
-          | { type: "stage"; name: string }
-          | { type: "done"; outputFiles: string[]; libraryIds?: string[] }
-          | { type: "error"; message: string };
-        if (event.type === "progress") {
-          onProgress?.({ percent: event.percent });
-        } else if (event.type === "stage") {
-          onProgress?.({ stage: event.name });
-        } else if (event.type === "done") {
-          outputFiles.push(...event.outputFiles);
-          libraryIds.push(...(event.libraryIds ?? []));
-        } else if (event.type === "error") {
-          error = new Error(event.message);
-        }
-      } catch {
-        // non-JSON, ignore
-      }
+      handleLine(line);
     }
   }
+  if (buffer.trim()) handleLine(buffer);
 
   if (error) throw error;
+  if (!sawDone) throw new Error("Download stream ended before completion");
+  if (outputFiles.length === 0) {
+    throw new Error("Download finished but did not produce a file");
+  }
   return { outputFiles, libraryIds };
 }

@@ -135,6 +135,7 @@ export function PreviewCard({ item, onClear }: PreviewCardProps) {
     const pending = toast.loading(`Starting ${item.title}…`);
     const outputs: string[] = [];
     const allLibraryIds: string[] = [];
+    const failures: string[] = [];
     try {
       if (item.source === "spotify") {
         const total = item.tracks.length;
@@ -174,6 +175,8 @@ export function PreviewCard({ item, onClear }: PreviewCardProps) {
             await syncOne(t);
             await attachToSelected(result.libraryIds);
           } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            failures.push(`${t.title}: ${message}`);
             console.warn(`Skipping ${t.title}:`, err);
           }
         }
@@ -206,6 +209,13 @@ export function PreviewCard({ item, onClear }: PreviewCardProps) {
         }
         await attachToSelected(result.libraryIds);
       }
+      if (outputs.length === 0) {
+        throw new Error(
+          failures[0]
+            ? `No tracks were downloaded. ${failures[0]}`
+            : "No tracks were downloaded.",
+        );
+      }
       setStatus({ kind: "done", downloaded: outputs.length });
       const suffix = selectedPlaylist
         ? ` · added to "${selectedPlaylist.name}"`
@@ -216,7 +226,10 @@ export function PreviewCard({ item, onClear }: PreviewCardProps) {
           : `Downloaded ${outputs.length}/${item.tracks.length}${suffix}`,
         {
           id: pending,
-          description: outputs[0] ?? undefined,
+          description:
+            failures.length > 0
+              ? `${failures.length} failed. First file: ${outputs[0]}`
+              : outputs[0] ?? undefined,
         },
       );
       if (selectedPlaylistId) {

@@ -3,6 +3,7 @@ import { Cloud, Download, Loader2, Music } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { streamDownload } from "@/lib/download-stream";
 import type { SavedTrack } from "@/lib/types";
 
 interface SavedTrackCardProps {
@@ -32,56 +33,25 @@ export function SavedTrackCard({
           ? track.source_url
           : `ytsearch1:${track.artist ?? ""} ${track.title}`.trim();
 
-      const res = await fetch("/api/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await streamDownload(
+        {
           url,
           title: track.title,
           artist: track.artist ?? undefined,
           album: track.album ?? undefined,
-        }),
-      });
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let error: Error | null = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          try {
-            const event = JSON.parse(trimmed) as
-              | { type: "progress"; percent: number }
-              | { type: "stage"; name: string }
-              | { type: "done"; outputFiles: string[] }
-              | { type: "error"; message: string };
-            if (event.type === "progress") {
-              setStatus({ kind: "downloading", percent: event.percent });
-            } else if (event.type === "stage") {
-              setStatus((prev) =>
-                prev.kind === "downloading"
-                  ? { ...prev, stage: event.name }
-                  : prev,
-              );
-            } else if (event.type === "error") {
-              error = new Error(event.message);
-            }
-          } catch {
-            // ignore non-JSON
+        },
+        (ev) => {
+          if (typeof ev.percent === "number") {
+            setStatus({ kind: "downloading", percent: ev.percent });
+          } else if (ev.stage) {
+            setStatus((prev) =>
+              prev.kind === "downloading"
+                ? { ...prev, stage: ev.stage }
+                : prev,
+            );
           }
-        }
-      }
-
-      if (error) throw error;
+        },
+      );
 
       setStatus({ kind: "done" });
       toast.success(`Downloaded "${track.title}"`);
